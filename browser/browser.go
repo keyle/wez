@@ -46,6 +46,23 @@ type formSubmission struct {
 	Values    url.Values
 }
 
+type navState struct {
+	URL     string
+	ScrollY int
+	CursorY int
+	CursorX int
+}
+
+type navigateOptions struct {
+	pushCurrent  bool
+	clearForward bool
+	restore      *navState
+}
+
+func defaultNavigateOptions() navigateOptions {
+	return navigateOptions{pushCurrent: true, clearForward: true}
+}
+
 // Browser ties all components together.
 type Browser struct {
 	UI      *ui.UI
@@ -56,8 +73,8 @@ type Browser struct {
 	Fetcher *fetch.Client
 
 	// Navigation stacks.
-	backStack    []string
-	forwardStack []string
+	backStack    []navState
+	forwardStack []navState
 	currentURL   string
 	sourceURL    string
 	sourceBody   string
@@ -100,32 +117,33 @@ func New(cfg config.Config, km *keymap.Keymap) (*Browser, error) {
 
 // Navigate fetches and renders a URL.
 func (b *Browser) Navigate(rawURL string) {
+	b.navigateWithOptions(rawURL, defaultNavigateOptions())
+}
+
+func (b *Browser) navigateWithOptions(rawURL string, opts navigateOptions) {
 	if isAboutWelcomeURL(rawURL) {
-		b.navigateInternalPage(aboutWelcomeURL, b.ShowWelcome)
+		b.navigateInternalPage(aboutWelcomeURL, b.ShowWelcome, opts)
 		return
 	}
 	if isAboutHistoryURL(rawURL) {
 		b.navigateInternalPage(aboutHistoryURL, func() {
 			b.UI.SetDocument(b.buildHistoryDoc())
-		})
+		}, opts)
 		return
 	}
 	if isAboutBookmarksURL(rawURL) {
 		b.navigateInternalPage(aboutBookmarksURL, func() {
 			b.UI.SetDocument(b.buildFavoritesDoc())
-		})
+		}, opts)
 		return
-	}
-
-	if b.viewActive {
-		b.viewActive = false
-		b.viewKind = ""
-		b.viewPrevDoc = nil
 	}
 	if isJavaScriptURL(rawURL) {
 		b.UI.SetStatus("Ignored javascript URL")
 		return
 	}
+
+	prev, hasPrev := b.currentNavState()
+	b.leaveAuxView()
 
 	result, err := fetchWithMetaRedirects(rawURL, b.Cfg.FollowMetaRedirects, func(u string) (*fetch.Result, error) {
 		return b.fetchWithStatusAnimation(u, "Loading")
@@ -134,25 +152,26 @@ func (b *Browser) Navigate(rawURL string) {
 		b.showError(fmt.Sprintf("Error loading %s: %v", rawURL, err))
 		return
 	}
-	b.applyFetchResult(result)
+
+	if !shouldDownload(result.ContentType) {
+		b.applyNavigationTransition(result.FinalURL, opts, prev, hasPrev)
+	}
+	b.applyFetchResult(result, opts.restore)
 }
 
-func (b *Browser) navigateInternalPage(targetURL string, renderFn func()) {
-	if b.viewActive {
-		b.viewActive = false
-		b.viewKind = ""
-		b.viewPrevDoc = nil
-	}
-	if b.currentURL != "" && b.currentURL != targetURL {
-		b.backStack = append(b.backStack, b.currentURL)
-	}
-	b.forwardStack = nil
+func (b *Browser) navigateInternalPage(targetURL string, renderFn func(), opts navigateOptions) {
+	prev, hasPrev := b.currentNavState()
+	b.leaveAuxView()
+	b.applyNavigationTransition(targetURL, opts, prev, hasPrev)
 	b.currentURL = targetURL
 	renderFn()
+	if opts.restore != nil {
+		b.UI.RestoreViewport(opts.restore.ScrollY, opts.restore.CursorY, opts.restore.CursorX)
+	}
 	b.UI.SetStatus("")
 }
 
-func (b *Browser) applyFetchResult(result *fetch.Result) {
+func (b *Browser) applyFetchResult(result *fetch.Result, restore *navState) {
 	if shouldDownload(result.ContentType) {
 		b.sourceURL = ""
 		b.sourceBody = ""
@@ -189,18 +208,57 @@ func (b *Browser) applyFetchResult(result *fetch.Result) {
 	b.sourceURL = result.FinalURL
 	b.sourceBody = normalizeSourceBody(result.Body)
 
-	// Update navigation state.
-	if b.currentURL != "" {
-		b.backStack = append(b.backStack, b.currentURL)
-	}
-	b.forwardStack = nil
 	b.currentURL = result.FinalURL
 
 	// Record in history.
 	_ = b.History.Add(result.FinalURL, doc.Title)
 
 	b.UI.SetDocument(doc)
+	if restore != nil {
+		b.UI.RestoreViewport(restore.ScrollY, restore.CursorY, restore.CursorX)
+	}
 	b.UI.SetStatus(statusMsg)
+}
+
+func (b *Browser) leaveAuxView() {
+	if !b.viewActive {
+		return
+	}
+	b.viewActive = false
+	b.viewKind = ""
+	b.viewPrevDoc = nil
+}
+
+func (b *Browser) currentNavState() (navState, bool) {
+	url := strings.TrimSpace(b.currentURL)
+	if url == "" {
+		return navState{}, false
+	}
+
+	state := navState{URL: url}
+	if b.viewActive {
+		state.ScrollY = b.viewScrollY
+		state.CursorY = b.viewCursorY
+		state.CursorX = b.viewCursorX
+		return state, true
+	}
+	if b.UI != nil {
+		state.ScrollY = b.UI.ScrollY
+		state.CursorY = b.UI.CursorY
+		state.CursorX = b.UI.CursorX
+	}
+	return state, true
+}
+
+func (b *Browser) applyNavigationTransition(targetURL string, opts navigateOptions, prev navState, hasPrev bool) {
+	if opts.pushCurrent && hasPrev {
+		if strings.TrimSpace(targetURL) == "" || prev.URL != targetURL {
+			b.backStack = append(b.backStack, prev)
+		}
+	}
+	if opts.clearForward {
+		b.forwardStack = nil
+	}
 }
 
 // DumpURL fetches and renders a URL into plain text output.
@@ -302,22 +360,26 @@ func (b *Browser) Run(initialURL string) {
 
 		case ui.ActionBack:
 			if len(b.backStack) > 0 {
-				b.forwardStack = append(b.forwardStack, b.currentURL)
+				if current, ok := b.currentNavState(); ok {
+					b.forwardStack = append(b.forwardStack, current)
+				}
 				prev := b.backStack[len(b.backStack)-1]
 				b.backStack = b.backStack[:len(b.backStack)-1]
-				b.currentURL = ""
-				b.Navigate(prev)
+				opts := navigateOptions{pushCurrent: false, clearForward: false, restore: &prev}
+				b.navigateWithOptions(prev.URL, opts)
 			} else {
 				b.UI.SetStatus("No previous page")
 			}
 
 		case ui.ActionForward:
 			if len(b.forwardStack) > 0 {
-				b.backStack = append(b.backStack, b.currentURL)
+				if current, ok := b.currentNavState(); ok {
+					b.backStack = append(b.backStack, current)
+				}
 				next := b.forwardStack[len(b.forwardStack)-1]
 				b.forwardStack = b.forwardStack[:len(b.forwardStack)-1]
-				b.currentURL = ""
-				b.Navigate(next)
+				opts := navigateOptions{pushCurrent: false, clearForward: false, restore: &next}
+				b.navigateWithOptions(next.URL, opts)
 			} else {
 				b.UI.SetStatus("No next page")
 			}
@@ -326,10 +388,9 @@ func (b *Browser) Run(initialURL string) {
 			b.Navigate(aboutWelcomeURL)
 
 		case ui.ActionReload:
-			if b.currentURL != "" {
-				url := b.currentURL
-				b.currentURL = ""
-				b.Navigate(url)
+			if current, ok := b.currentNavState(); ok {
+				opts := navigateOptions{pushCurrent: false, clearForward: false, restore: &current}
+				b.navigateWithOptions(current.URL, opts)
 			}
 
 		case ui.ActionOpenImage:
@@ -881,7 +942,11 @@ func (b *Browser) submitFormControl(controlIdx int) {
 		return
 	}
 
-	b.applyFetchResult(result)
+	if !shouldDownload(result.ContentType) {
+		prev, hasPrev := b.currentNavState()
+		b.applyNavigationTransition(result.FinalURL, defaultNavigateOptions(), prev, hasPrev)
+	}
+	b.applyFetchResult(result, nil)
 }
 
 func (b *Browser) submitWithStatusAnimation(actionURL, method string, values url.Values) (*fetch.Result, error) {

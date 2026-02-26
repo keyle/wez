@@ -7,9 +7,13 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/gdamore/tcell/v2"
+
 	"wez/config"
+	"wez/fetch"
 	"wez/history"
 	"wez/render"
+	"wez/ui"
 )
 
 func TestExtractMetaRefreshURLAbsolute(t *testing.T) {
@@ -242,5 +246,86 @@ func TestRecentHistoryEntries(t *testing.T) {
 	out = recentHistoryEntries(nil, 5)
 	if len(out) != 0 {
 		t.Fatalf("expected empty output for nil input, got %d", len(out))
+	}
+}
+
+func TestCurrentNavStateUsesUnderlyingPagePositionInAuxView(t *testing.T) {
+	b := &Browser{
+		currentURL:  "https://example.com/item",
+		viewActive:  true,
+		viewScrollY: 7,
+		viewCursorY: 12,
+		viewCursorX: 4,
+		UI: &ui.UI{
+			ScrollY: 99,
+			CursorY: 99,
+			CursorX: 99,
+		},
+	}
+
+	state, ok := b.currentNavState()
+	if !ok {
+		t.Fatal("expected current nav state")
+	}
+	if state.URL != "https://example.com/item" {
+		t.Fatalf("unexpected URL: %q", state.URL)
+	}
+	if state.ScrollY != 7 || state.CursorY != 12 || state.CursorX != 4 {
+		t.Fatalf("expected aux-view saved position, got scroll=%d cursor=%d:%d", state.ScrollY, state.CursorY, state.CursorX)
+	}
+}
+
+func TestApplyNavigationTransitionStoresCursorPosition(t *testing.T) {
+	b := &Browser{
+		UI:         &ui.UI{ScrollY: 5, CursorY: 9, CursorX: 3},
+		currentURL: "https://example.com/a",
+	}
+
+	prev, ok := b.currentNavState()
+	if !ok {
+		t.Fatal("expected current state before navigation")
+	}
+
+	b.applyNavigationTransition("https://example.com/b", defaultNavigateOptions(), prev, ok)
+
+	if len(b.backStack) != 1 {
+		t.Fatalf("expected one back-stack entry, got %d", len(b.backStack))
+	}
+	got := b.backStack[0]
+	if got.URL != "https://example.com/a" || got.ScrollY != 5 || got.CursorY != 9 || got.CursorX != 3 {
+		t.Fatalf("unexpected saved nav state: %+v", got)
+	}
+}
+
+func TestApplyFetchResultRestoresViewport(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+
+	sim := tcell.NewSimulationScreen("UTF-8")
+	if err := sim.Init(); err != nil {
+		t.Fatalf("failed to init simulation screen: %v", err)
+	}
+	defer sim.Fini()
+	sim.SetSize(80, 24)
+
+	cfg := config.Default()
+	b := &Browser{
+		UI:      &ui.UI{Screen: sim, Cfg: cfg},
+		Cfg:     cfg,
+		History: history.New(),
+	}
+
+	body := "line0\nline1\nline2\nline3\nline4\nline5\nline6\nline7\nline8\nline9\nline10\nline11\nline12\nline13\nline14\nline15\nline16\nline17\nline18\nline19\nline20\nline21\nline22\nline23\nline24\nline25\nline26\nline27\nline28\nline29"
+	result := &fetch.Result{
+		FinalURL:    "https://example.com/plain",
+		StatusCode:  200,
+		ContentType: "text/plain",
+		Body:        []byte(body),
+	}
+	restore := &navState{URL: "https://example.com/plain", ScrollY: 5, CursorY: 9, CursorX: 2}
+
+	b.applyFetchResult(result, restore)
+
+	if b.UI.ScrollY != 5 || b.UI.CursorY != 9 || b.UI.CursorX != 2 {
+		t.Fatalf("expected restored viewport 5/9:2, got %d/%d:%d", b.UI.ScrollY, b.UI.CursorY, b.UI.CursorX)
 	}
 }

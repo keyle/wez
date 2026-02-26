@@ -24,6 +24,9 @@ func TestDefault(t *testing.T) {
 	if !cfg.ShowRecentOnWelcome {
 		t.Error("expected show_recent_on_welcome default true")
 	}
+	if cfg.ShowLinkUnderline {
+		t.Error("expected show_link_underline default false")
+	}
 	if !cfg.PersistCookies {
 		t.Error("expected persist_cookies default true")
 	}
@@ -111,6 +114,9 @@ func TestAutoCreateConfig(t *testing.T) {
 	if !strings.Contains(string(content), "show_recent_on_welcome") {
 		t.Error("expected auto-created config to include show_recent_on_welcome")
 	}
+	if !strings.Contains(string(content), "show_link_underline") {
+		t.Error("expected auto-created config to include show_link_underline")
+	}
 	if !strings.Contains(string(content), "search_engine") {
 		t.Error("expected auto-created config to include search_engine")
 	}
@@ -160,6 +166,7 @@ func TestLoadFromFile(t *testing.T) {
 image_viewer = "feh %s"
 download_dir = "~/Downloads"
 show_recent_on_welcome = false
+show_link_underline = true
 persist_cookies = false
 cookie_jar_path = "~/.cache/wez/custom-cookies.json"
 persist_session_cookies = false
@@ -192,6 +199,9 @@ heading = "green"
 	}
 	if cfg.ShowRecentOnWelcome {
 		t.Error("expected show_recent_on_welcome=false from config")
+	}
+	if !cfg.ShowLinkUnderline {
+		t.Error("expected show_link_underline=true from config")
 	}
 	if cfg.SearchEngine != "bing" {
 		t.Errorf("expected search_engine bing, got %q", cfg.SearchEngine)

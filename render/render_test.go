@@ -71,6 +71,33 @@ func TestRenderLinks(t *testing.T) {
 	}
 }
 
+func TestRenderEmptyAnchorRendersPlaceholder(t *testing.T) {
+	html := `<html><body><a href="vote?id=1&amp;how=up&amp;goto=item?id=1"><div class="votearrow"></div></a></body></html>`
+	doc := Render([]byte(html), "https://news.ycombinator.com/item?id=1", 80)
+
+	if len(doc.Links) != 1 {
+		t.Fatalf("expected 1 link, got %d", len(doc.Links))
+	}
+	if doc.Links[0].URL != "https://news.ycombinator.com/vote?id=1&how=up&goto=item?id=1" {
+		t.Fatalf("unexpected link URL: %q", doc.Links[0].URL)
+	}
+	if !strings.Contains(docText(doc), "[a]") {
+		t.Fatalf("expected empty anchor placeholder '[a]', got: %q", docText(doc))
+	}
+
+	foundPlaceholderLink := false
+	for _, line := range doc.Lines {
+		for _, span := range line.Spans {
+			if span.Text == "[a]" && span.LinkIdx == 0 {
+				foundPlaceholderLink = true
+			}
+		}
+	}
+	if !foundPlaceholderLink {
+		t.Fatalf("expected '[a]' placeholder to be link-styled, got: %q", docText(doc))
+	}
+}
+
 func TestRenderIgnoresJavaScriptLinks(t *testing.T) {
 	html := `<html><body><a href="javascript:void(0)">Click me</a></body></html>`
 	doc := Render([]byte(html), "https://example.com", 80)

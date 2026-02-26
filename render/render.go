@@ -757,13 +757,55 @@ func (r *renderer) handleLink(n *html.Node) {
 	r.underline = true
 	r.curLinkIdx = linkIdx
 	r.suppressLeadingSpace = true
+	startLineCount := len(r.lines)
+	startSpanCount := len(r.curSpans)
 
 	r.walkChildren(n)
+
+	if !r.linkHasVisibleText(linkIdx, startLineCount, startSpanCount) {
+		placeholder := "[a]"
+		if r.curCol+runewidth.StringWidth(placeholder) > r.width && r.curCol > r.indent {
+			r.flushLine()
+			if r.indent > 0 {
+				r.addIndent()
+			}
+		}
+		r.links[linkIdx].Line = len(r.lines)
+		r.links[linkIdx].Col = r.curCol
+		r.appendToLine(placeholder)
+	}
 
 	r.color = oldColor
 	r.underline = oldUnderline
 	r.curLinkIdx = oldLinkIdx
 	r.suppressLeadingSpace = oldSuppressLeadingSpace
+}
+
+func (r *renderer) linkHasVisibleText(linkIdx int, startLineCount, startSpanCount int) bool {
+	if linkIdx < 0 {
+		return false
+	}
+
+	for lineIdx := startLineCount; lineIdx < len(r.lines); lineIdx++ {
+		for _, span := range r.lines[lineIdx].Spans {
+			if span.LinkIdx == linkIdx && strings.TrimSpace(span.Text) != "" {
+				return true
+			}
+		}
+	}
+
+	curSpanStart := 0
+	if len(r.lines) == startLineCount {
+		curSpanStart = startSpanCount
+	}
+	for i := curSpanStart; i < len(r.curSpans); i++ {
+		span := r.curSpans[i]
+		if span.LinkIdx == linkIdx && strings.TrimSpace(span.Text) != "" {
+			return true
+		}
+	}
+
+	return false
 }
 
 func (r *renderer) handleNoscript(n *html.Node) {

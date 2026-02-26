@@ -189,6 +189,50 @@ func (u *UI) SetDocument(doc *render.Document) {
 	u.formInputMasked = false
 }
 
+// RestoreViewport restores cursor and scroll position for current document.
+func (u *UI) RestoreViewport(scrollY, cursorY, cursorX int) {
+	if u.Doc == nil || len(u.Doc.Lines) == 0 {
+		u.ScrollY = 0
+		u.CursorY = 0
+		u.CursorX = 0
+		u.updateStatusLink()
+		return
+	}
+
+	contentHeight := u.contentHeight()
+	maxScroll := len(u.Doc.Lines) - contentHeight
+	if maxScroll < 0 {
+		maxScroll = 0
+	}
+
+	if scrollY < 0 {
+		scrollY = 0
+	}
+	if scrollY > maxScroll {
+		scrollY = maxScroll
+	}
+	u.ScrollY = scrollY
+
+	u.CursorY = cursorY
+	u.CursorX = cursorX
+	u.clampCursor()
+
+	if u.CursorY < u.ScrollY {
+		u.ScrollY = u.CursorY
+	}
+	if contentHeight > 0 && u.CursorY >= u.ScrollY+contentHeight {
+		u.ScrollY = u.CursorY - contentHeight + 1
+	}
+	if u.ScrollY < 0 {
+		u.ScrollY = 0
+	}
+	if u.ScrollY > maxScroll {
+		u.ScrollY = maxScroll
+	}
+
+	u.updateStatusLink()
+}
+
 // SetStatus sets a temporary status message.
 func (u *UI) SetStatus(msg string) {
 	u.StatusMsg = msg
@@ -1477,7 +1521,11 @@ func (u *UI) spanStyle(span render.Span) tcell.Style {
 	if span.Style.Italic {
 		style = style.Italic(true)
 	}
-	if span.Style.Underline {
+	underline := span.Style.Underline
+	if span.LinkIdx >= 0 && !u.Cfg.ShowLinkUnderline {
+		underline = false
+	}
+	if underline {
 		style = style.Underline(true)
 	}
 	if span.Style.Strike {
