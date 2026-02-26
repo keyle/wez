@@ -116,7 +116,7 @@ func TestLoadFromFile(t *testing.T) {
 	configContent := `
 image_viewer = "feh %s"
 download_dir = "~/Downloads"
-search_engine = "google"
+search_engine = "bing"
 follow_meta_redirects = false
 
 [colors]
@@ -143,14 +143,14 @@ heading = "green"
 	if cfg.DownloadDir != filepath.Join(tmpDir, "Downloads") {
 		t.Errorf("expected expanded download_dir %q, got %q", filepath.Join(tmpDir, "Downloads"), cfg.DownloadDir)
 	}
-	if cfg.SearchEngine != "google" {
-		t.Errorf("expected search_engine google, got %q", cfg.SearchEngine)
+	if cfg.SearchEngine != "bing" {
+		t.Errorf("expected search_engine bing, got %q", cfg.SearchEngine)
 	}
 	if cfg.FollowMetaRedirects {
 		t.Error("expected follow_meta_redirects=false from config")
 	}
-	if got := cfg.SearchURL("terminal browser"); !strings.HasPrefix(got, "https://www.google.com/search?q=") {
-		t.Errorf("expected google search URL, got %q", got)
+	if got := cfg.SearchURL("terminal browser"); !strings.HasPrefix(got, "https://www.bing.com/search?q=") {
+		t.Errorf("expected bing search URL, got %q", got)
 	}
 	if cfg.Colors.Link != "cyan" {
 		t.Errorf("expected 'cyan', got %q", cfg.Colors.Link)
@@ -171,6 +171,37 @@ func TestSearchURLTemplateOverride(t *testing.T) {
 	got := cfg.SearchURL("hello world")
 	if got != "https://example.com/search?term=hello+world&src=wez" {
 		t.Fatalf("unexpected search URL: %q", got)
+	}
+}
+
+func TestUnsupportedSearchEngineFallsBackToDuckDuckGo(t *testing.T) {
+	tmpDir := t.TempDir()
+	configDir := filepath.Join(tmpDir, ".config", "wez")
+	if err := os.MkdirAll(configDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	configContent := `
+search_engine = "google"
+`
+	configPath := filepath.Join(configDir, "config.toml")
+	if err := os.WriteFile(configPath, []byte(configContent), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	oldHome := os.Getenv("HOME")
+	os.Setenv("HOME", tmpDir)
+	defer os.Setenv("HOME", oldHome)
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if cfg.SearchEngine != "duckduckgo" {
+		t.Fatalf("expected unsupported search_engine to fall back to duckduckgo, got %q", cfg.SearchEngine)
+	}
+	if got := cfg.SearchURL("terminal browser"); !strings.HasPrefix(got, "https://duckduckgo.com/?q=") {
+		t.Fatalf("expected duckduckgo fallback URL, got %q", got)
 	}
 }
 

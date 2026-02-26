@@ -100,6 +100,10 @@ func Load() (Config, error) {
 	}
 	if cfg.SearchURLTmpl == "" {
 		cfg.SearchURLTmpl = searchTemplateForEngine(cfg.SearchEngine)
+		if cfg.SearchURLTmpl == "" {
+			cfg.SearchEngine = "duckduckgo"
+			cfg.SearchURLTmpl = searchTemplateForEngine(cfg.SearchEngine)
+		}
 	}
 	if cfg.SearchURLTmpl == "" {
 		cfg.SearchURLTmpl = searchTemplateForEngine("duckduckgo")
@@ -174,8 +178,6 @@ func searchTemplateForEngine(engine string) string {
 	switch strings.ToLower(strings.TrimSpace(engine)) {
 	case "ddg", "duckduckgo", "duck":
 		return "https://duckduckgo.com/?q=%s"
-	case "google", "goog":
-		return "https://www.google.com/search?q=%s"
 	case "bing", "bling":
 		return "https://www.bing.com/search?q=%s"
 	case "yahoo":
@@ -356,8 +358,9 @@ download_dir = %q
 follow_meta_redirects = %t
 
 # Search engine used by the web-search prompt (Ctrl-O by default).
-# Built-in options: ddg, duckduckgo, google, bing, yahoo, brave,
+# Built-in options: ddg, duckduckgo, bing, yahoo, brave,
 # ecosia, startpage, qwant
+# Google Search currently requires JavaScript and is not supported.
 search_engine = %q
 
 # Optional custom search URL template. %%s is replaced with URL-escaped query text.
