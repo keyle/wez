@@ -31,6 +31,8 @@ var (
 	httpEquivAttrRe = regexp.MustCompile(`(?is)\bhttp-equiv\s*=\s*("([^"]*)"|'([^']*)'|([^\s>]+))`)
 )
 
+const maxMetaRedirectHops = 8
+
 // Browser ties all components together.
 type Browser struct {
 	UI      *ui.UI
@@ -62,36 +64,12 @@ func New(cfg config.Config, km *keymap.Keymap) (*Browser, error) {
 
 // Navigate fetches and renders a URL.
 func (b *Browser) Navigate(rawURL string) {
-	const maxMetaRedirectHops = 8
-
-	result, err := b.fetchWithStatusAnimation(rawURL, "Loading")
+	result, err := fetchWithMetaRedirects(rawURL, b.Cfg.FollowMetaRedirects, func(u string) (*fetch.Result, error) {
+		return b.fetchWithStatusAnimation(u, "Loading")
+	})
 	if err != nil {
 		b.showError(fmt.Sprintf("Error loading %s: %v", rawURL, err))
 		return
-	}
-
-	if b.Cfg.FollowMetaRedirects {
-		seen := map[string]bool{result.FinalURL: true}
-		for hops := 0; hops < maxMetaRedirectHops; hops++ {
-			if !isHTMLContentType(result.ContentType) {
-				break
-			}
-
-			nextURL, ok := extractMetaRefreshURL(result.Body, result.FinalURL)
-			if !ok || nextURL == "" {
-				break
-			}
-			if seen[nextURL] {
-				break
-			}
-			seen[nextURL] = true
-
-			result, err = b.fetchWithStatusAnimation(nextURL, "Loading")
-			if err != nil {
-				b.showError(fmt.Sprintf("Error loading %s: %v", nextURL, err))
-				return
-			}
-		}
 	}
 
 	if shouldDownload(result.ContentType) {
@@ -134,6 +112,45 @@ func (b *Browser) Navigate(rawURL string) {
 
 	b.UI.SetDocument(doc)
 	b.UI.SetStatus(statusMsg)
+}
+
+// DumpURL fetches and renders a URL into plain text output.
+func DumpURL(cfg config.Config, rawURL string, width int) (string, error) {
+	if width <= 0 {
+		width = 80
+	}
+
+	result, err := fetchWithMetaRedirects(rawURL, cfg.FollowMetaRedirects, fetch.Fetch)
+	if err != nil {
+		return "", err
+	}
+
+	if shouldDownload(result.ContentType) {
+		return "", fmt.Errorf("cannot dump binary content type %q", result.ContentType)
+	}
+
+	var doc *render.Document
+	ct := strings.ToLower(result.ContentType)
+	if strings.Contains(ct, "text/html") || strings.Contains(ct, "application/xhtml") {
+		doc = render.Render(result.Body, result.FinalURL, width)
+	} else {
+		doc = render.RenderPlainText(result.Body, result.FinalURL, width)
+	}
+
+	var sb strings.Builder
+	for i, line := range doc.Lines {
+		var lineSB strings.Builder
+		for _, span := range line.Spans {
+			lineSB.WriteString(span.Text)
+		}
+		lineText := strings.TrimRight(lineSB.String(), " \t")
+		sb.WriteString(lineText)
+		if i < len(doc.Lines)-1 {
+			sb.WriteByte('\n')
+		}
+	}
+
+	return sb.String(), nil
 }
 
 // Run starts the main event loop. If initialURL is non-empty, navigates there first.
@@ -310,6 +327,40 @@ func shortenForStatus(s string, maxRunes int) string {
 		return string(r[:maxRunes])
 	}
 	return string(r[:maxRunes-3]) + "..."
+}
+
+func fetchWithMetaRedirects(rawURL string, followMeta bool, fetchOne func(string) (*fetch.Result, error)) (*fetch.Result, error) {
+	result, err := fetchOne(rawURL)
+	if err != nil {
+		return nil, err
+	}
+
+	if !followMeta {
+		return result, nil
+	}
+
+	seen := map[string]bool{result.FinalURL: true}
+	for hops := 0; hops < maxMetaRedirectHops; hops++ {
+		if !isHTMLContentType(result.ContentType) {
+			break
+		}
+
+		nextURL, ok := extractMetaRefreshURL(result.Body, result.FinalURL)
+		if !ok || nextURL == "" {
+			break
+		}
+		if seen[nextURL] {
+			break
+		}
+		seen[nextURL] = true
+
+		result, err = fetchOne(nextURL)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	return result, nil
 }
 
 func isHTMLContentType(contentType string) bool {

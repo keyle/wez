@@ -40,11 +40,13 @@ func Render(htmlBytes []byte, pageURL string, width int) *Document {
 	r.walkChildren(body)
 	r.flushLine()
 
+	lines, links := compactVerticalWhitespace(r.lines, r.links)
+
 	return &Document{
 		Title: r.title,
 		URL:   pageURL,
-		Lines: r.lines,
-		Links: r.links,
+		Lines: lines,
+		Links: links,
 	}
 }
 
@@ -186,7 +188,10 @@ func (r *renderer) appendToLine(text string) {
 
 func (r *renderer) flushLine() {
 	if len(r.curSpans) > 0 {
-		r.lines = append(r.lines, Line{Spans: r.curSpans})
+		line := Line{Spans: r.curSpans}
+		if r.preformatted || !lineIsBlank(line) {
+			r.lines = append(r.lines, line)
+		}
 	}
 	r.curSpans = nil
 	r.curCol = r.indent
@@ -198,10 +203,83 @@ func (r *renderer) ensureBlankLine() {
 	// Add blank line if last line is not already blank.
 	if len(r.lines) > 0 {
 		last := r.lines[len(r.lines)-1]
-		if len(last.Spans) > 0 {
+		if !lineIsBlank(last) {
 			r.lines = append(r.lines, Line{})
 		}
 	}
+}
+
+func lineIsBlank(line Line) bool {
+	if len(line.Spans) == 0 {
+		return true
+	}
+	for _, span := range line.Spans {
+		if strings.TrimSpace(span.Text) != "" {
+			return false
+		}
+	}
+	return true
+}
+
+func compactVerticalWhitespace(lines []Line, links []Link) ([]Line, []Link) {
+	if len(lines) == 0 {
+		return lines, links
+	}
+
+	mapping := make([]int, len(lines))
+	for i := range mapping {
+		mapping[i] = -1
+	}
+
+	var out []Line
+	seenBlank := false
+	for i, line := range lines {
+		blank := lineIsBlank(line)
+		if blank {
+			if len(out) == 0 {
+				continue // trim leading blank lines
+			}
+			if seenBlank {
+				continue // collapse multiple blank lines
+			}
+			seenBlank = true
+		} else {
+			seenBlank = false
+		}
+
+		mapping[i] = len(out)
+		out = append(out, line)
+	}
+
+	for len(out) > 0 && lineIsBlank(out[len(out)-1]) {
+		out = out[:len(out)-1] // trim trailing blank lines
+	}
+
+	if len(out) == len(lines) {
+		return lines, links
+	}
+
+	outLinks := make([]Link, 0, len(links))
+	for _, link := range links {
+		if link.Line >= 0 && link.Line < len(mapping) {
+			if newLine := mapping[link.Line]; newLine >= 0 {
+				link.Line = newLine
+				outLinks = append(outLinks, link)
+				continue
+			}
+		}
+		// Fallback: keep link and clamp line if mapping was lost.
+		if len(out) > 0 {
+			if link.Line < 0 {
+				link.Line = 0
+			} else if link.Line >= len(out) {
+				link.Line = len(out) - 1
+			}
+			outLinks = append(outLinks, link)
+		}
+	}
+
+	return out, outLinks
 }
 
 func (r *renderer) addText(text string) {
@@ -373,7 +451,7 @@ func (r *renderer) handleElement(n *html.Node) {
 		r.color = oldColor
 		r.ensureBlankLine()
 
-	case atom.P, atom.Div, atom.Section, atom.Article, atom.Main,
+	case atom.P, atom.Section, atom.Article, atom.Main,
 		atom.Header, atom.Footer, atom.Nav, atom.Form, atom.Fieldset,
 		atom.Figure, atom.Figcaption, atom.Details, atom.Summary,
 		atom.Address:

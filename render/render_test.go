@@ -266,6 +266,56 @@ func TestRenderStyleIgnored(t *testing.T) {
 	}
 }
 
+func TestRenderNoConsecutiveBlankLines(t *testing.T) {
+	html := `<html><body><section><div><p>one</p></div><div><p>two</p></div></section></body></html>`
+	doc := Render([]byte(html), "http://example.com", 80)
+
+	blankRun := 0
+	for _, line := range doc.Lines {
+		if strings.TrimSpace(lineToText(line)) == "" {
+			blankRun++
+			if blankRun > 1 {
+				t.Fatalf("found consecutive blank lines in output: %q", docText(doc))
+			}
+		} else {
+			blankRun = 0
+		}
+	}
+}
+
+func TestCompactVerticalWhitespaceRemapsLinks(t *testing.T) {
+	lines := []Line{
+		{},
+		{},
+		{Spans: []Span{{Text: "hello", LinkIdx: 0}}},
+		{},
+		{},
+		{Spans: []Span{{Text: "world", LinkIdx: 1}}},
+		{},
+	}
+	links := []Link{
+		{URL: "https://a.example", Line: 2, Col: 0},
+		{URL: "https://b.example", Line: 5, Col: 0},
+	}
+
+	outLines, outLinks := compactVerticalWhitespace(lines, links)
+	if len(outLines) == 0 {
+		t.Fatal("expected non-empty output lines")
+	}
+	if len(outLinks) != 2 {
+		t.Fatalf("expected 2 links after compaction, got %d", len(outLinks))
+	}
+	if outLinks[0].Line >= len(outLines) || outLinks[1].Line >= len(outLines) {
+		t.Fatalf("link lines out of bounds after compaction: %#v", outLinks)
+	}
+	if strings.TrimSpace(lineToText(outLines[outLinks[0].Line])) != "hello" {
+		t.Fatalf("first link should point to 'hello' line, got %q", lineToText(outLines[outLinks[0].Line]))
+	}
+	if strings.TrimSpace(lineToText(outLines[outLinks[1].Line])) != "world" {
+		t.Fatalf("second link should point to 'world' line, got %q", lineToText(outLines[outLinks[1].Line]))
+	}
+}
+
 func TestRenderTitleExtraction(t *testing.T) {
 	html := `<html><head><title>My Page</title></head><body><p>Content</p></body></html>`
 	doc := Render([]byte(html), "http://example.com", 80)

@@ -12,6 +12,8 @@ wez - modern terminal web browser
 
 *wez* *-v*
 
+*wez* *--dump* _URL_
+
 # DESCRIPTION
 
 wez is a modern, keyboard-driven terminal web browser.
@@ -27,6 +29,10 @@ Search engines that require JavaScript (for example Google Search) are not suppo
 
 *--version*, *-v*
 	Print version and exit.
+
+*--dump* _URL_
+	Fetch and render _URL_ to stdout without starting the TUI.
+	Output is plain text in the same rendered layout style used in wez.
 
 URL
 	Optional URL (or hostname) to open at startup.
@@ -76,6 +82,10 @@ Open with implicit https:
 Print version:
 
 	wez --version
+
+Dump rendered page content to stdout:
+
+	wez --dump https://example.com
 
 # KEY BINDINGS
 

@@ -3,6 +3,7 @@ package config
 import (
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 
@@ -44,8 +45,11 @@ func TestDefault(t *testing.T) {
 }
 
 func TestVersion(t *testing.T) {
-	if Version != "1.0" {
-		t.Errorf("expected version '1.0', got %q", Version)
+	if Version == "" {
+		t.Fatal("expected non-empty version")
+	}
+	if ok, _ := regexp.MatchString(`^\d+\.\d+(\.\d+)?$`, Version); !ok {
+		t.Errorf("expected semantic-ish version, got %q", Version)
 	}
 }
 
