@@ -11,38 +11,41 @@ import (
 
 // Action name constants used throughout the application.
 const (
-	Quit         = "quit"
-	ScrollDown   = "scroll_down"
-	ScrollUp     = "scroll_up"
-	CursorLeft   = "cursor_left"
-	CursorRight  = "cursor_right"
-	PageDown     = "page_down"
-	PageUp       = "page_up"
-	HalfPageDown = "half_page_down"
-	HalfPageUp   = "half_page_up"
-	GoTop        = "go_top"
-	GoBottom     = "go_bottom"
-	Back         = "back"
-	Forward      = "forward"
-	OpenURL      = "open_url"
-	OpenURLEdit  = "open_url_edit"
-	FollowLink   = "follow_link"
-	NextLink     = "next_link"
-	PrevLink     = "prev_link"
-	Search       = "search"
-	SearchWeb    = "search_web"
-	SearchNext   = "search_next"
-	SearchPrev   = "search_prev"
-	Reload       = "reload"
-	OpenImage    = "open_image"
-	YankURL      = "yank_url"
-	YankLinkURL  = "yank_link_url"
-	VisualMode   = "visual_mode"
-	VisualLine   = "visual_line_mode"
-	OpenHistory  = "open_history_view"
-	ClearCache   = "clear_cache"
-	ClearHistory = "clear_history"
-	OpenMailto   = "open_mailto"
+	Quit           = "quit"
+	ScrollDown     = "scroll_down"
+	ScrollUp       = "scroll_up"
+	CursorLeft     = "cursor_left"
+	CursorRight    = "cursor_right"
+	PageDown       = "page_down"
+	PageUp         = "page_up"
+	HalfPageDown   = "half_page_down"
+	HalfPageUp     = "half_page_up"
+	GoTop          = "go_top"
+	GoBottom       = "go_bottom"
+	Back           = "back"
+	Forward        = "forward"
+	OpenURL        = "open_url"
+	OpenURLEdit    = "open_url_edit"
+	FollowLink     = "follow_link"
+	NextLink       = "next_link"
+	PrevLink       = "prev_link"
+	Search         = "search"
+	SearchWeb      = "search_web"
+	SearchNext     = "search_next"
+	SearchPrev     = "search_prev"
+	Reload         = "reload"
+	OpenImage      = "open_image"
+	YankURL        = "yank_url"
+	YankLinkURL    = "yank_link_url"
+	VisualMode     = "visual_mode"
+	VisualLine     = "visual_line_mode"
+	OpenHistory    = "open_history_view"
+	OpenFavorites  = "open_favorites_view"
+	AddFavorite    = "add_favorite"
+	RemoveFavorite = "remove_favorite"
+	ClearCache     = "clear_cache"
+	ClearHistory   = "clear_history"
+	OpenMailto     = "open_mailto"
 )
 
 // Keymap maps key presses to action names, supporting single keys and
@@ -51,42 +54,46 @@ type Keymap struct {
 	singleKeys map[string]string // key string -> action
 	sequences  map[string]string // multi-char sequence -> action
 	seqStarts  map[string]bool   // first chars of known sequences
+	bindings   map[string][]string
 }
 
 // DefaultBindings returns the built-in key bindings.
 func DefaultBindings() map[string][]string {
 	return map[string][]string{
-		Quit:         {"q"},
-		ScrollDown:   {"j", "Down"},
-		ScrollUp:     {"k", "Up"},
-		CursorLeft:   {"h", "Left"},
-		CursorRight:  {"l", "Right"},
-		PageDown:     {"Ctrl-F", "PgDn", "Space"},
-		PageUp:       {"Ctrl-B", "PgUp"},
-		HalfPageDown: {"Ctrl-D"},
-		HalfPageUp:   {"Ctrl-U"},
-		GoTop:        {"gg"},
-		GoBottom:     {"G"},
-		Back:         {"b", "B", "Backspace"},
-		OpenHistory:  {"H"},
-		Forward:      {"L"},
-		OpenURL:      {"o"},
-		OpenURLEdit:  {"O"},
-		FollowLink:   {"Enter"},
-		NextLink:     {"Tab"},
-		PrevLink:     {"Shift-Tab"},
-		Search:       {"/"},
-		SearchWeb:    {"Ctrl-O"},
-		SearchNext:   {"n"},
-		SearchPrev:   {"N"},
-		Reload:       {"r", "R"},
-		OpenImage:    {"i"},
-		YankURL:      {"y"},
-		YankLinkURL:  {"Y"},
-		VisualMode:   {"v"},
-		VisualLine:   {"V"},
-		ClearCache:   {"zc"},
-		ClearHistory: {"zh"},
+		Quit:           {"q"},
+		ScrollDown:     {"j", "Down"},
+		ScrollUp:       {"k", "Up"},
+		CursorLeft:     {"h", "Left"},
+		CursorRight:    {"l", "Right"},
+		PageDown:       {"Ctrl-F", "PgDn", "Space"},
+		PageUp:         {"PgUp"},
+		HalfPageDown:   {"Ctrl-D"},
+		HalfPageUp:     {"Ctrl-U"},
+		GoTop:          {"gg"},
+		GoBottom:       {"G"},
+		Back:           {"b", "B", "Backspace"},
+		OpenHistory:    {"Ctrl-H"},
+		OpenFavorites:  {"Ctrl-B"},
+		Forward:        {"L"},
+		OpenURL:        {"o"},
+		OpenURLEdit:    {"O"},
+		FollowLink:     {"Enter"},
+		NextLink:       {"Tab"},
+		PrevLink:       {"Shift-Tab"},
+		Search:         {"/"},
+		SearchWeb:      {"Ctrl-O"},
+		SearchNext:     {"n"},
+		SearchPrev:     {"N"},
+		Reload:         {"r", "R"},
+		OpenImage:      {"i"},
+		YankURL:        {"y"},
+		YankLinkURL:    {"Y"},
+		VisualMode:     {"v"},
+		VisualLine:     {"V"},
+		AddFavorite:    {"za"},
+		RemoveFavorite: {"zd"},
+		ClearCache:     {"zc"},
+		ClearHistory:   {"zh"},
 	}
 }
 
@@ -145,6 +152,17 @@ func (km *Keymap) Resolve(pending string, currentKey string) (action string, new
 	}
 
 	return "", ""
+}
+
+// KeysForAction returns the configured keys for an action.
+func (km *Keymap) KeysForAction(action string) []string {
+	if km == nil || km.bindings == nil {
+		return nil
+	}
+	keys := km.bindings[action]
+	out := make([]string, len(keys))
+	copy(out, keys)
+	return out
 }
 
 // EventToKeyString converts a tcell key event to the canonical key string
@@ -222,9 +240,14 @@ func buildKeymap(bindings map[string][]string) *Keymap {
 		singleKeys: make(map[string]string),
 		sequences:  make(map[string]string),
 		seqStarts:  make(map[string]bool),
+		bindings:   make(map[string][]string),
 	}
 
 	for action, keys := range bindings {
+		copied := make([]string, len(keys))
+		copy(copied, keys)
+		km.bindings[action] = copied
+
 		for _, key := range keys {
 			if isSequence(key) {
 				km.sequences[key] = action
@@ -281,13 +304,14 @@ scroll_up      = ["k", "Up"]
 cursor_left    = ["h", "Left"]
 cursor_right   = ["l", "Right"]
 page_down      = ["Ctrl-F", "PgDn", "Space"]
-page_up        = ["Ctrl-B", "PgUp"]
+page_up        = ["PgUp"]
 half_page_down = ["Ctrl-D"]
 half_page_up   = ["Ctrl-U"]
 go_top         = ["gg"]
 go_bottom      = ["G"]
 back           = ["b", "B", "Backspace"]
-open_history_view = ["H"]
+open_history_view = ["Ctrl-H"]
+open_favorites_view = ["Ctrl-B"]
 forward        = ["L"]
 open_url       = ["o"]
 open_url_edit  = ["O"]
@@ -304,6 +328,8 @@ yank_url       = ["y"]
 yank_link_url  = ["Y"]
 visual_mode    = ["v"]
 visual_line_mode = ["V"]
+add_favorite   = ["za"]
+remove_favorite = ["zd"]
 clear_cache    = ["zc"]
 clear_history  = ["zh"]
 `

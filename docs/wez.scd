@@ -21,6 +21,7 @@ wez is a modern, keyboard-driven terminal web browser.
 It focuses on readable output and fast navigation: basic HTML rendering,
 vim-style movement, link following, in-page search, external image viewing,
 downloads for binary responses, clipboard yanking, simple HTML form interaction,
+favorites with categories,
 and configurable keymaps.
 
 JavaScript is not executed.
@@ -102,14 +103,16 @@ Default normal-mode bindings (subset):
 - `j` / `k` - scroll down / up
 - `h` / `l` - move cursor left / right
 - `gg` / `G` - jump top / bottom
-- `Ctrl-F` / `Ctrl-B` - page down / up
+- `Ctrl-F` / `PgUp` - page down / up
 - `Ctrl-D` / `Ctrl-U` - half-page down / up
 - `Tab` / `Shift-Tab` - next / previous focus target (link or form control)
 - `Enter` - activate link/control under cursor
 - `b` / `B` / `Backspace` - back
-- `H` - open history view (Esc to return)
+- `Ctrl-H` - open history view (Esc to return)
+- `Ctrl-B` - open favorites view (Esc to return)
 - `L` - forward
 - `r` / `R` - reload
+- `za` / `zd` - add / remove favorite
 - `zc` / `zh` - clear cache / clear history
 - `/` then `n` / `N` - search, next / previous match
 - `i` - open image under cursor (external viewer)
@@ -127,6 +130,9 @@ All bindings are remappable in `~/.config/wez/keymap.toml`.
 
 - `~/.config/wez/keymap.toml`
 	Key bindings (auto-created with defaults).
+
+- `~/.config/wez/fav.json`
+	Persisted favorites with 1-level categories.
 
 - `~/.cache/wez/history`
 	Persisted browsing history.

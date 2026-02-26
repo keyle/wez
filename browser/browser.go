@@ -19,6 +19,7 @@ import (
 	"golang.org/x/net/html/atom"
 
 	"wez/config"
+	"wez/favorites"
 	"wez/fetch"
 	"wez/history"
 	"wez/keymap"
@@ -49,6 +50,7 @@ type Browser struct {
 	Cfg     config.Config
 	History *history.History
 	Seen    *history.Seen
+	Favs    *favorites.Store
 	Fetcher *fetch.Client
 
 	// Navigation stacks.
@@ -56,11 +58,12 @@ type Browser struct {
 	forwardStack []string
 	currentURL   string
 
-	historyViewActive  bool
-	historyViewPrevDoc *render.Document
-	historyViewScrollY int
-	historyViewCursorY int
-	historyViewCursorX int
+	viewActive  bool
+	viewKind    string
+	viewPrevDoc *render.Document
+	viewScrollY int
+	viewCursorY int
+	viewCursorX int
 }
 
 // New creates a new Browser instance.
@@ -74,12 +77,15 @@ func New(cfg config.Config, km *keymap.Keymap) (*Browser, error) {
 	_ = hist.Load()
 	seen := history.NewSeen()
 	_ = seen.Load()
+	favs := favorites.New()
+	_ = favs.Load()
 
 	return &Browser{
 		UI:      tui,
 		Cfg:     cfg,
 		History: hist,
 		Seen:    seen,
+		Favs:    favs,
 		Fetcher: fetch.NewClientWithOptions(fetch.ClientOptions{
 			PersistCookies:        cfg.PersistCookies,
 			CookieJarPath:         cfg.CookieJarPath,
@@ -101,9 +107,10 @@ func (b *Browser) Navigate(rawURL string) {
 		return
 	}
 
-	if b.historyViewActive {
-		b.historyViewActive = false
-		b.historyViewPrevDoc = nil
+	if b.viewActive {
+		b.viewActive = false
+		b.viewKind = ""
+		b.viewPrevDoc = nil
 	}
 	if isJavaScriptURL(rawURL) {
 		b.UI.SetStatus("Ignored javascript URL")
@@ -227,7 +234,7 @@ func (b *Browser) Run(initialURL string) {
 			return
 
 		case ui.ActionEscape:
-			if b.historyViewActive {
+			if b.viewActive {
 				b.exitHistoryView()
 			}
 
@@ -256,6 +263,12 @@ func (b *Browser) Run(initialURL string) {
 
 		case ui.ActionCommitFormInput:
 			b.UI.ApplyFormInput()
+
+		case ui.ActionAddFavorite:
+			b.addCurrentFavorite(strings.TrimSpace(b.UI.InputBuffer))
+
+		case ui.ActionRemoveFavorite:
+			b.removeFavoriteAtCursorOrCurrent()
 
 		case ui.ActionBack:
 			if len(b.backStack) > 0 {
@@ -321,6 +334,9 @@ func (b *Browser) Run(initialURL string) {
 		case ui.ActionOpenHistory:
 			b.openHistoryView()
 
+		case ui.ActionOpenFavorites:
+			b.openFavoritesView()
+
 		case ui.ActionClearCache:
 			b.clearCache()
 
@@ -357,34 +373,123 @@ func (b *Browser) newFetcher() *fetch.Client {
 }
 
 func (b *Browser) openHistoryView() {
-	if b.historyViewActive {
-		return
-	}
-	b.historyViewActive = true
-	b.historyViewPrevDoc = b.UI.Doc
-	b.historyViewScrollY = b.UI.ScrollY
-	b.historyViewCursorY = b.UI.CursorY
-	b.historyViewCursorX = b.UI.CursorX
+	b.enterAuxView("history")
 
 	b.UI.SetDocument(b.buildHistoryDoc())
 	b.UI.SetStatus("History view (Esc to return)")
 }
 
-func (b *Browser) exitHistoryView() {
-	if !b.historyViewActive {
+func (b *Browser) openFavoritesView() {
+	b.enterAuxView("favorites")
+
+	b.UI.SetDocument(b.buildFavoritesDoc())
+	b.UI.SetStatus("Favorites view (Esc to return)")
+}
+
+func (b *Browser) enterAuxView(kind string) {
+	if b.viewActive {
+		b.viewKind = kind
 		return
 	}
-	b.historyViewActive = false
 
-	if b.historyViewPrevDoc != nil {
-		b.UI.SetDocument(b.historyViewPrevDoc)
-		b.UI.ScrollY = b.historyViewScrollY
-		b.UI.CursorY = b.historyViewCursorY
-		b.UI.CursorX = b.historyViewCursorX
+	b.viewActive = true
+	b.viewKind = kind
+	b.viewPrevDoc = b.UI.Doc
+	b.viewScrollY = b.UI.ScrollY
+	b.viewCursorY = b.UI.CursorY
+	b.viewCursorX = b.UI.CursorX
+}
+
+func (b *Browser) exitHistoryView() {
+	if !b.viewActive {
+		return
+	}
+	b.viewActive = false
+	b.viewKind = ""
+
+	if b.viewPrevDoc != nil {
+		b.UI.SetDocument(b.viewPrevDoc)
+		b.UI.ScrollY = b.viewScrollY
+		b.UI.CursorY = b.viewCursorY
+		b.UI.CursorX = b.viewCursorX
 	} else {
 		b.ShowWelcome()
 	}
 	b.UI.SetStatus("")
+}
+
+func (b *Browser) addCurrentFavorite(category string) {
+	if b.viewActive && (b.viewKind == "history" || b.viewKind == "favorites") {
+		b.UI.SetStatus("Cannot add favorite from this view")
+		return
+	}
+
+	if b.Favs == nil {
+		b.Favs = favorites.New()
+		_ = b.Favs.Load()
+	}
+
+	u := strings.TrimSpace(b.currentURL)
+	if u == "" || strings.HasPrefix(strings.ToLower(u), "about:") {
+		b.UI.SetStatus("No page to favorite")
+		return
+	}
+
+	title := u
+	if b.UI.Doc != nil && strings.TrimSpace(b.UI.Doc.Title) != "" {
+		title = b.UI.Doc.Title
+	}
+
+	cat := strings.TrimSpace(category)
+	if cat == "" {
+		cat = "general"
+	}
+
+	if err := b.Favs.Add(u, title, cat); err != nil {
+		b.UI.SetStatus("Favorite add error: " + err.Error())
+		return
+	}
+
+	if b.viewActive && b.viewKind == "favorites" {
+		b.UI.SetDocument(b.buildFavoritesDoc())
+	}
+	b.UI.SetStatus("Added favorite [" + cat + "]")
+}
+
+func (b *Browser) removeFavoriteAtCursorOrCurrent() {
+	if b.Favs == nil {
+		b.Favs = favorites.New()
+		_ = b.Favs.Load()
+	}
+
+	target := ""
+	if b.viewActive && b.viewKind == "favorites" && b.UI.Doc != nil {
+		if _, u, ok := b.UI.Doc.LinkAt(b.UI.CursorY, b.UI.CursorX); ok {
+			target = strings.TrimSpace(u)
+		}
+	}
+	if target == "" {
+		target = strings.TrimSpace(b.currentURL)
+	}
+	if target == "" {
+		b.UI.SetStatus("No favorite to remove")
+		return
+	}
+
+	removed, err := b.Favs.Remove(target)
+	if err != nil {
+		b.UI.SetStatus("Favorite remove error: " + err.Error())
+		return
+	}
+	if !removed {
+		b.UI.SetStatus("Favorite not found")
+		return
+	}
+
+	if b.viewActive && b.viewKind == "favorites" {
+		b.UI.SetDocument(b.buildFavoritesDoc())
+	}
+	b.UI.SetStatus("Removed favorite")
 }
 
 func (b *Browser) clearHistory() {
@@ -395,7 +500,7 @@ func (b *Browser) clearHistory() {
 		b.UI.SetStatus("History clear error: " + err.Error())
 		return
 	}
-	if b.historyViewActive {
+	if b.viewActive && b.viewKind == "history" {
 		b.UI.SetDocument(b.buildHistoryDoc())
 	}
 	b.UI.SetStatus("History cleared")
@@ -422,7 +527,7 @@ func (b *Browser) clearCache() {
 	_ = b.Seen.Load()
 	b.Fetcher = b.newFetcher()
 
-	if b.historyViewActive {
+	if b.viewActive && b.viewKind == "history" {
 		b.UI.SetDocument(b.buildHistoryDoc())
 	}
 	b.UI.SetStatus("Cache cleared")
@@ -436,6 +541,8 @@ func (b *Browser) buildHistoryDoc() *render.Document {
 
 	lines := make([]render.Line, 0, len(entries)+8)
 	links := make([]render.Link, 0, len(entries))
+	clearHint := b.historyClearHint()
+	cacheHint := b.historyCacheClearHint()
 
 	lines = append(lines, render.Line{Spans: []render.Span{{
 		Text:    "History",
@@ -449,6 +556,9 @@ func (b *Browser) buildHistoryDoc() *render.Document {
 			Text:    "No history entries.",
 			LinkIdx: -1,
 		}}})
+		lines = append(lines, render.Line{})
+		lines = append(lines, render.Line{Spans: []render.Span{{Text: clearHint, LinkIdx: -1, Style: render.SpanStyle{Color: "code"}}}})
+		lines = append(lines, render.Line{Spans: []render.Span{{Text: cacheHint, LinkIdx: -1, Style: render.SpanStyle{Color: "code"}}}})
 		return &render.Document{Title: "History", URL: "about:history", Lines: lines, Links: links}
 	}
 
@@ -489,7 +599,112 @@ func (b *Browser) buildHistoryDoc() *render.Document {
 		links = append(links, render.Link{URL: e.URL, Line: lineIdx, Col: linkCol})
 	}
 
+	lines = append(lines, render.Line{})
+	lines = append(lines, render.Line{Spans: []render.Span{{Text: clearHint, LinkIdx: -1, Style: render.SpanStyle{Color: "code"}}}})
+	lines = append(lines, render.Line{Spans: []render.Span{{Text: cacheHint, LinkIdx: -1, Style: render.SpanStyle{Color: "code"}}}})
+
 	return &render.Document{Title: "History", URL: "about:history", Lines: lines, Links: links}
+}
+
+func (b *Browser) historyClearHint() string {
+	keys := []string{"zh"}
+	if b != nil && b.UI != nil && b.UI.Keymap != nil {
+		if configured := b.UI.Keymap.KeysForAction(keymap.ClearHistory); len(configured) > 0 {
+			keys = configured
+		}
+	}
+	return "Clear history: " + strings.Join(keys, " / ")
+}
+
+func (b *Browser) historyCacheClearHint() string {
+	keys := []string{"zc"}
+	if b != nil && b.UI != nil && b.UI.Keymap != nil {
+		if configured := b.UI.Keymap.KeysForAction(keymap.ClearCache); len(configured) > 0 {
+			keys = configured
+		}
+	}
+	return "Clear cache: " + strings.Join(keys, " / ")
+}
+
+func (b *Browser) buildFavoritesDoc() *render.Document {
+	if b.Favs == nil {
+		b.Favs = favorites.New()
+		_ = b.Favs.Load()
+	}
+
+	entries := b.Favs.List()
+	sort.Slice(entries, func(i, j int) bool {
+		ci := strings.ToLower(strings.TrimSpace(entries[i].Category))
+		cj := strings.ToLower(strings.TrimSpace(entries[j].Category))
+		if ci != cj {
+			return ci < cj
+		}
+		return entries[i].AddedAt.After(entries[j].AddedAt)
+	})
+
+	lines := make([]render.Line, 0, len(entries)*2+6)
+	links := make([]render.Link, 0, len(entries))
+	removeHint := b.favoriteRemoveHint()
+
+	lines = append(lines, render.Line{Spans: []render.Span{{
+		Text:    "Favorites",
+		Style:   render.SpanStyle{Bold: true, Color: "heading"},
+		LinkIdx: -1,
+	}}})
+
+	if len(entries) == 0 {
+		lines = append(lines, render.Line{})
+		lines = append(lines, render.Line{Spans: []render.Span{{Text: "No favorites yet. Use za to add one.", LinkIdx: -1}}})
+		lines = append(lines, render.Line{})
+		lines = append(lines, render.Line{Spans: []render.Span{{Text: removeHint, LinkIdx: -1, Style: render.SpanStyle{Color: "code"}}}})
+		return &render.Document{Title: "Favorites", URL: "about:favorites", Lines: lines, Links: links}
+	}
+
+	lines = append(lines, render.Line{})
+	currentCategory := ""
+	for _, e := range entries {
+		cat := strings.TrimSpace(e.Category)
+		if cat == "" {
+			cat = "general"
+		}
+		if cat != currentCategory {
+			if currentCategory != "" {
+				lines = append(lines, render.Line{})
+			}
+			currentCategory = cat
+			lines = append(lines, render.Line{Spans: []render.Span{{Text: cat, Style: render.SpanStyle{Bold: true}, LinkIdx: -1}}})
+		}
+
+		title := strings.TrimSpace(e.Title)
+		if title == "" {
+			title = e.URL
+		}
+		lineIdx := len(lines)
+		linkIdx := len(links)
+		linkColor := "link"
+		if b.isURLSeen(e.URL) {
+			linkColor = "visited_link"
+		}
+
+		lines = append(lines, render.Line{Spans: []render.Span{{Text: "- ", LinkIdx: -1}, {Text: title, LinkIdx: linkIdx, Style: render.SpanStyle{Underline: true, Color: linkColor}}}})
+		lines = append(lines, render.Line{Spans: []render.Span{{Text: "  " + e.URL, LinkIdx: -1, Style: render.SpanStyle{Color: "code"}}}})
+		links = append(links, render.Link{URL: e.URL, Line: lineIdx, Col: 2})
+	}
+
+	lines = append(lines, render.Line{})
+	lines = append(lines, render.Line{Spans: []render.Span{{Text: removeHint, LinkIdx: -1, Style: render.SpanStyle{Color: "code"}}}})
+
+	return &render.Document{Title: "Favorites", URL: "about:favorites", Lines: lines, Links: links}
+}
+
+func (b *Browser) favoriteRemoveHint() string {
+	keys := []string{"zd"}
+	if b != nil && b.UI != nil && b.UI.Keymap != nil {
+		if configured := b.UI.Keymap.KeysForAction(keymap.RemoveFavorite); len(configured) > 0 {
+			keys = configured
+		}
+	}
+	return "Remove favorite: " + strings.Join(keys, " / ")
 }
 
 func isJavaScriptURL(raw string) bool {
@@ -1226,16 +1441,18 @@ func (b *Browser) ShowWelcome() {
 			{Spans: []render.Span{{Text: "  h / l       Move cursor left / right", LinkIdx: -1}}},
 			{Spans: []render.Span{{Text: "  gg / G      Go to top / bottom", LinkIdx: -1}}},
 			{Spans: []render.Span{{Text: "  Ctrl-F      Page down", LinkIdx: -1}}},
-			{Spans: []render.Span{{Text: "  Ctrl-B      Page up", LinkIdx: -1}}},
+			{Spans: []render.Span{{Text: "  PgUp        Page up", LinkIdx: -1}}},
 			{Spans: []render.Span{{Text: "  Ctrl-D/U    Half page down / up", LinkIdx: -1}}},
 			{Spans: []render.Span{{Text: "  Space       Page down", LinkIdx: -1}}},
 			{Spans: []render.Span{{Text: "  Tab / S-Tab Jump to next / previous link/control", LinkIdx: -1}}},
 			{Spans: []render.Span{{Text: "  Enter       Activate link/form control under cursor", LinkIdx: -1}}},
 			{Spans: []render.Span{{Text: "              (edit fields, toggle checks, submit buttons)", LinkIdx: -1}}},
 			{Spans: []render.Span{{Text: "  b / B       Go back", LinkIdx: -1}}},
-			{Spans: []render.Span{{Text: "  H           Open history view (Esc to return)", LinkIdx: -1}}},
+			{Spans: []render.Span{{Text: "  Ctrl-H      Open history view (Esc to return)", LinkIdx: -1}}},
+			{Spans: []render.Span{{Text: "  Ctrl-B      Open favorites view (Esc to return)", LinkIdx: -1}}},
 			{Spans: []render.Span{{Text: "  L           Go forward", LinkIdx: -1}}},
 			{Spans: []render.Span{{Text: "  r / R       Reload page", LinkIdx: -1}}},
+			{Spans: []render.Span{{Text: "  za / zd     Add / remove favorite", LinkIdx: -1}}},
 			{Spans: []render.Span{{Text: "  zc / zh     Clear cache / clear history", LinkIdx: -1}}},
 			{Spans: []render.Span{{Text: "  /           Search in page", LinkIdx: -1}}},
 			{Spans: []render.Span{{Text: "  Ctrl-o      Search web", LinkIdx: -1}}},
@@ -1248,6 +1465,7 @@ func (b *Browser) ShowWelcome() {
 			{},
 			{Spans: []render.Span{{Text: "Config:  ~/.config/wez/config.toml", Style: render.SpanStyle{Color: "code"}, LinkIdx: -1}}},
 			{Spans: []render.Span{{Text: "Keymap:  ~/.config/wez/keymap.toml", Style: render.SpanStyle{Color: "code"}, LinkIdx: -1}}},
+			{Spans: []render.Span{{Text: "Favs:    ~/.config/wez/fav.json", Style: render.SpanStyle{Color: "code"}, LinkIdx: -1}}},
 			{Spans: []render.Span{{Text: "History: ~/.cache/wez/history", Style: render.SpanStyle{Color: "code"}, LinkIdx: -1}}},
 			{},
 			{Spans: []render.Span{{Text: "Press 'o' to enter a URL, 'ctrl-o' for web search.", LinkIdx: -1}}},

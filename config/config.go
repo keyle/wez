@@ -12,7 +12,7 @@ import (
 	"github.com/gdamore/tcell/v2"
 )
 
-const Version = "1.2"
+const Version = "1.4"
 
 type Config struct {
 	ImageViewer           string      `toml:"image_viewer"`
@@ -58,7 +58,7 @@ func Default() Config {
 			Link:        "blue",
 			VisitedLink: "purple",
 			Heading:     "darkyellow",
-			Code:        "orange",
+			Code:        "teal",
 			Noscript:    "black",
 			NoscriptBg:  "gray",
 			BlockQuote:  "teal",
@@ -398,7 +398,7 @@ search_url_template = %q
 link        = "blue"
 visited_link = "purple"
 heading     = "darkyellow"
-code        = "orange"
+code        = "teal"
 noscript    = "black"
 noscript_bg = "gray"
 blockquote  = "teal"

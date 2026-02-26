@@ -11,6 +11,7 @@ It aims to be fast and readable in a text UI, with practical browsing features a
 - downloads for binary responses
 - history view
 - cache, persistent cookies, visited links
+- favourites
 - no JavaScript runtime
 - form handling, basic
 - yanking (copy), v/V visual support, mouse support

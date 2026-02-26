@@ -18,7 +18,7 @@ func TestDefaultBindings(t *testing.T) {
 		GoTop, GoBottom, Back, Forward,
 		OpenURL, OpenURLEdit, FollowLink, NextLink, PrevLink,
 		Search, SearchWeb, SearchNext, SearchPrev, Reload, OpenImage, YankURL, YankLinkURL,
-		VisualMode, VisualLine, OpenHistory, ClearCache, ClearHistory,
+		VisualMode, VisualLine, OpenHistory, OpenFavorites, AddFavorite, RemoveFavorite, ClearCache, ClearHistory,
 	}
 
 	for _, action := range required {
@@ -183,10 +183,30 @@ func TestSpecialKeyBindings(t *testing.T) {
 		t.Errorf("expected Y -> yank_link_url, got %q", action)
 	}
 
-	// H -> open_history_view.
-	action, _ = km.Resolve("", "H")
+	// Ctrl-H -> open_history_view.
+	action, _ = km.Resolve("", "Ctrl-H")
 	if action != OpenHistory {
-		t.Errorf("expected H -> open_history_view, got %q", action)
+		t.Errorf("expected Ctrl-H -> open_history_view, got %q", action)
+	}
+
+	// Ctrl-B -> open_favorites_view.
+	action, _ = km.Resolve("", "Ctrl-B")
+	if action != OpenFavorites {
+		t.Errorf("expected Ctrl-B -> open_favorites_view, got %q", action)
+	}
+
+	// za -> add_favorite.
+	action, p := km.Resolve("", "z")
+	action, p = km.Resolve("z", "a")
+	if action != AddFavorite || p != "" {
+		t.Errorf("expected za -> add_favorite, got action=%q pending=%q", action, p)
+	}
+
+	// zd -> remove_favorite.
+	action, p = km.Resolve("", "z")
+	action, p = km.Resolve("z", "d")
+	if action != RemoveFavorite || p != "" {
+		t.Errorf("expected zd -> remove_favorite, got action=%q pending=%q", action, p)
 	}
 
 	// zc -> clear_cache.
@@ -216,6 +236,17 @@ func TestUnboundKey(t *testing.T) {
 	}
 	if pending != "" {
 		t.Errorf("expected no pending for unbound 'x', got %q", pending)
+	}
+}
+
+func TestKeysForAction(t *testing.T) {
+	km := New()
+	keys := km.KeysForAction(RemoveFavorite)
+	if len(keys) == 0 {
+		t.Fatal("expected remove_favorite keys")
+	}
+	if keys[0] != "zd" {
+		t.Fatalf("expected default remove_favorite key zd, got %q", keys[0])
 	}
 }
 

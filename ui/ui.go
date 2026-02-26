@@ -24,6 +24,7 @@ const (
 	ModeSearch
 	ModeWebSearch
 	ModeFormInput
+	ModeFavoriteCategory
 	ModeVisual
 	ModeVisualLine
 )
@@ -47,7 +48,10 @@ const (
 	ActionYankURL     // yank selected text or current line
 	ActionYankLinkURL // yank href of link under cursor
 	ActionCommitFormInput
+	ActionAddFavorite
+	ActionRemoveFavorite
 	ActionOpenHistory
+	ActionOpenFavorites
 	ActionClearCache
 	ActionClearHistory
 	ActionEscape
@@ -204,7 +208,7 @@ func (u *UI) Draw() {
 	contentStart := 0
 	contentEnd := h - 1 // status bar
 
-	if u.Mode == ModeURLInput || u.Mode == ModeSearch || u.Mode == ModeWebSearch || u.Mode == ModeFormInput {
+	if u.Mode == ModeURLInput || u.Mode == ModeSearch || u.Mode == ModeWebSearch || u.Mode == ModeFormInput || u.Mode == ModeFavoriteCategory {
 		contentStart = 1
 	}
 
@@ -262,7 +266,7 @@ func (u *UI) Draw() {
 	}
 
 	// Draw URL bar / search bar if active.
-	if u.Mode == ModeURLInput || u.Mode == ModeSearch || u.Mode == ModeWebSearch || u.Mode == ModeFormInput {
+	if u.Mode == ModeURLInput || u.Mode == ModeSearch || u.Mode == ModeWebSearch || u.Mode == ModeFormInput || u.Mode == ModeFavoriteCategory {
 		barStyle := tcell.StyleDefault.
 			Background(config.ParseColor(u.Cfg.Colors.TopBarBg)).
 			Foreground(config.ParseColor(u.Cfg.Colors.TopBar))
@@ -362,12 +366,14 @@ func (u *UI) HandleEvent(ev tcell.Event) Action {
 			return u.handleInputKey(ev, ActionWebSearch)
 		case ModeFormInput:
 			return u.handleInputKey(ev, ActionCommitFormInput)
+		case ModeFavoriteCategory:
+			return u.handleInputKey(ev, ActionAddFavorite)
 		default:
 			return u.handleNormalKey(ev)
 		}
 
 	case *tcell.EventMouse:
-		if u.Mode == ModeURLInput || u.Mode == ModeSearch || u.Mode == ModeWebSearch || u.Mode == ModeFormInput {
+		if u.Mode == ModeURLInput || u.Mode == ModeSearch || u.Mode == ModeWebSearch || u.Mode == ModeFormInput || u.Mode == ModeFavoriteCategory {
 			return ActionNone
 		}
 		u.handleMouseEvent(ev)
@@ -539,6 +545,23 @@ func (u *UI) executeAction(actionName string) Action {
 
 	case keymap.OpenHistory:
 		return ActionOpenHistory
+
+	case keymap.OpenFavorites:
+		return ActionOpenFavorites
+
+	case keymap.AddFavorite:
+		if u.isNonFavoritableView() {
+			u.SetStatus("Cannot add favorite from this view")
+			return ActionNone
+		}
+		u.Mode = ModeFavoriteCategory
+		u.InputPrompt = "favorite category: "
+		u.InputBuffer = "general"
+		u.InputCursor = len(u.InputBuffer)
+		return ActionNone
+
+	case keymap.RemoveFavorite:
+		return ActionRemoveFavorite
 
 	case keymap.ClearCache:
 		return ActionClearCache
@@ -732,6 +755,14 @@ func (u *UI) updateStatusLink() {
 
 func (u *UI) isVisualMode() bool {
 	return u.Mode == ModeVisual || u.Mode == ModeVisualLine
+}
+
+func (u *UI) isNonFavoritableView() bool {
+	if u.Doc == nil {
+		return false
+	}
+	v := strings.ToLower(strings.TrimSpace(u.Doc.URL))
+	return v == "about:history" || v == "about:favorites"
 }
 
 func (u *UI) startVisual(lineWise bool) {

@@ -51,8 +51,8 @@ func TestDefault(t *testing.T) {
 	if cfg.Colors.Heading != "darkyellow" {
 		t.Errorf("expected default heading color 'darkyellow', got %q", cfg.Colors.Heading)
 	}
-	if cfg.Colors.Code != "orange" {
-		t.Errorf("expected default code color 'orange', got %q", cfg.Colors.Code)
+	if cfg.Colors.Code != "teal" {
+		t.Errorf("expected default code color 'teal', got %q", cfg.Colors.Code)
 	}
 	if cfg.Colors.Noscript != "black" {
 		t.Errorf("expected default noscript color 'black', got %q", cfg.Colors.Noscript)
