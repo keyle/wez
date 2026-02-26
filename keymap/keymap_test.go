@@ -18,6 +18,7 @@ func TestDefaultBindings(t *testing.T) {
 		GoTop, GoBottom, Back, Forward,
 		OpenURL, OpenURLEdit, FollowLink, NextLink, PrevLink,
 		Search, SearchNext, SearchPrev, Reload, OpenImage, YankURL,
+		VisualMode, VisualLine,
 	}
 
 	for _, action := range required {

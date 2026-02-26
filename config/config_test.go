@@ -3,6 +3,7 @@ package config
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/gdamore/tcell/v2"
@@ -15,6 +16,9 @@ func TestDefault(t *testing.T) {
 	}
 	if cfg.MailtoHandler != "open mailto:%s" {
 		t.Errorf("expected default mailto handler 'open mailto:%%s', got %q", cfg.MailtoHandler)
+	}
+	if cfg.DownloadDir == "" {
+		t.Error("expected default download directory to be set")
 	}
 	if cfg.Colors.Link != "blue" {
 		t.Errorf("expected default link color 'blue', got %q", cfg.Colors.Link)
@@ -51,6 +55,13 @@ func TestAutoCreateConfig(t *testing.T) {
 	if _, err := os.Stat(configPath); os.IsNotExist(err) {
 		t.Error("expected config.toml to be auto-created")
 	}
+	content, err := os.ReadFile(configPath)
+	if err != nil {
+		t.Fatalf("reading auto-created config: %v", err)
+	}
+	if !strings.Contains(string(content), "download_dir") {
+		t.Error("expected auto-created config to include download_dir")
+	}
 }
 
 func TestLoadMissingFile(t *testing.T) {
@@ -74,6 +85,7 @@ func TestLoadFromFile(t *testing.T) {
 
 	configContent := `
 image_viewer = "feh %s"
+download_dir = "~/Downloads"
 
 [colors]
 link = "cyan"
@@ -95,6 +107,9 @@ heading = "green"
 	}
 	if cfg.ImageViewer != "feh %s" {
 		t.Errorf("expected 'feh %%s', got %q", cfg.ImageViewer)
+	}
+	if cfg.DownloadDir != filepath.Join(tmpDir, "Downloads") {
+		t.Errorf("expected expanded download_dir %q, got %q", filepath.Join(tmpDir, "Downloads"), cfg.DownloadDir)
 	}
 	if cfg.Colors.Link != "cyan" {
 		t.Errorf("expected 'cyan', got %q", cfg.Colors.Link)

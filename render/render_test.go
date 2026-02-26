@@ -152,8 +152,34 @@ func TestRenderTable(t *testing.T) {
 	if !strings.Contains(text, "Alice") {
 		t.Errorf("expected 'Alice' in table output, got: %q", text)
 	}
-	if !strings.Contains(text, "|") || !strings.Contains(text, "─") {
-		t.Errorf("expected table separators in output, got: %q", text)
+	if strings.Contains(text, "NameAge") {
+		t.Errorf("expected whitespace between table cells, got: %q", text)
+	}
+
+	lines := strings.Split(strings.TrimSpace(text), "\n")
+	if len(lines) < 3 {
+		t.Fatalf("expected multiple lines for table rows, got: %q", text)
+	}
+	if !strings.Contains(lines[0], "Name") || !strings.Contains(lines[1], "Alice") || !strings.Contains(lines[2], "Bob") {
+		t.Errorf("expected each table row to render on its own line, got lines: %#v", lines)
+	}
+}
+
+func TestRenderTableSoftWrap(t *testing.T) {
+	html := `<html><body><table><tr><td>verylongword verylongword verylongword verylongword</td></tr></table></body></html>`
+	doc := Render([]byte(html), "http://example.com", 20)
+
+	nonEmpty := 0
+	for i, line := range doc.Lines {
+		if line.Width() > 20 {
+			t.Fatalf("line %d exceeded width 20: %d", i, line.Width())
+		}
+		if strings.TrimSpace(lineToText(line)) != "" {
+			nonEmpty++
+		}
+	}
+	if nonEmpty < 2 {
+		t.Fatalf("expected wrapped table content across multiple lines, got: %q", docText(doc))
 	}
 }
 

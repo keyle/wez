@@ -3,9 +3,14 @@ package browser
 import (
 	"bufio"
 	"fmt"
+	"mime"
+	"net/url"
 	"os"
 	"os/exec"
+	"path"
+	"path/filepath"
 	"strings"
+	"time"
 
 	"wez/config"
 	"wez/fetch"
@@ -46,12 +51,22 @@ func New(cfg config.Config, km *keymap.Keymap) (*Browser, error) {
 
 // Navigate fetches and renders a URL.
 func (b *Browser) Navigate(rawURL string) {
-	b.UI.SetStatus("Loading " + rawURL + "...")
-	b.UI.Draw()
-
-	result, err := fetch.Fetch(rawURL)
+	result, err := b.fetchWithStatusAnimation(rawURL)
 	if err != nil {
 		b.showError(fmt.Sprintf("Error loading %s: %v", rawURL, err))
+		return
+	}
+
+	if shouldDownload(result.ContentType) {
+		savedPath, saveErr := b.saveDownload(result)
+		if saveErr != nil {
+			b.showError(fmt.Sprintf("download failed: %v", saveErr))
+			return
+		}
+		if b.UI.Doc == nil {
+			b.ShowWelcome()
+		}
+		b.UI.SetStatusAlert("Downloaded to " + savedPath)
 		return
 	}
 
@@ -172,9 +187,7 @@ func (b *Browser) Run(initialURL string) {
 			b.UI.PrevSearchMatch()
 
 		case ui.ActionYankURL:
-			if b.currentURL != "" {
-				b.UI.SetStatus("URL: " + b.currentURL)
-			}
+			b.UI.Yank()
 		}
 	}
 }
@@ -193,6 +206,184 @@ func (b *Browser) showError(msg string) {
 	}
 	b.UI.SetDocument(doc)
 	b.UI.SetStatus(msg)
+}
+
+func (b *Browser) fetchWithStatusAnimation(rawURL string) (*fetch.Result, error) {
+	type fetchResult struct {
+		result *fetch.Result
+		err    error
+	}
+
+	ch := make(chan fetchResult, 1)
+	go func() {
+		result, err := fetch.Fetch(rawURL)
+		ch <- fetchResult{result: result, err: err}
+	}()
+
+	ticker := time.NewTicker(120 * time.Millisecond)
+	defer ticker.Stop()
+
+	step := 0
+	for {
+		b.UI.SetStatus(fmt.Sprintf("%s %s", loadingFrame(step), shortenForStatus(rawURL, 52)))
+		b.UI.Draw()
+
+		select {
+		case out := <-ch:
+			if out.err == nil {
+				b.UI.SetStatus("")
+			}
+			return out.result, out.err
+		case <-ticker.C:
+			step++
+		}
+	}
+}
+
+func loadingFrame(step int) string {
+	const width = 8
+	pos := step % (2*width - 2)
+	if pos >= width {
+		pos = 2*width - 2 - pos
+	}
+
+	bar := []rune("        ")
+	bar[pos] = '>'
+	return "[" + string(bar) + "]"
+}
+
+func shortenForStatus(s string, maxRunes int) string {
+	r := []rune(s)
+	if len(r) <= maxRunes {
+		return s
+	}
+	if maxRunes <= 3 {
+		return string(r[:maxRunes])
+	}
+	return string(r[:maxRunes-3]) + "..."
+}
+
+func shouldDownload(contentType string) bool {
+	ct := strings.ToLower(strings.TrimSpace(contentType))
+	if ct == "" {
+		return false
+	}
+
+	mediaType, _, err := mime.ParseMediaType(ct)
+	if err == nil {
+		ct = mediaType
+	}
+
+	if strings.HasPrefix(ct, "text/") {
+		return false
+	}
+	if strings.Contains(ct, "html") || strings.Contains(ct, "xhtml") {
+		return false
+	}
+	if strings.Contains(ct, "xml") || strings.Contains(ct, "json") || strings.Contains(ct, "javascript") {
+		return false
+	}
+
+	return true
+}
+
+func (b *Browser) saveDownload(result *fetch.Result) (string, error) {
+	dir := b.Cfg.DownloadDir
+	if dir == "" {
+		dir = config.Default().DownloadDir
+	}
+	if strings.HasPrefix(dir, "~/") || dir == "~" {
+		homeDir, err := os.UserHomeDir()
+		if err == nil && homeDir != "" {
+			if dir == "~" {
+				dir = homeDir
+			} else {
+				dir = filepath.Join(homeDir, dir[2:])
+			}
+		}
+	}
+
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return "", fmt.Errorf("creating download directory: %w", err)
+	}
+
+	filename := downloadFilename(result.FinalURL, result.ContentType)
+	path := uniqueDownloadPath(dir, filename)
+	if err := os.WriteFile(path, result.Body, 0o644); err != nil {
+		return "", fmt.Errorf("writing download: %w", err)
+	}
+
+	return path, nil
+}
+
+func downloadFilename(rawURL, contentType string) string {
+	name := "download"
+	if u, err := url.Parse(rawURL); err == nil {
+		base := path.Base(u.Path)
+		if base != "" && base != "/" && base != "." {
+			name = base
+		}
+	}
+
+	name = strings.TrimSpace(name)
+	name = strings.ReplaceAll(name, "/", "_")
+	name = strings.ReplaceAll(name, "\\", "_")
+	if name == "" {
+		name = "download"
+	}
+
+	if filepath.Ext(name) == "" {
+		if ext := defaultExtForContentType(contentType); ext != "" {
+			name += ext
+		}
+	}
+
+	return name
+}
+
+func defaultExtForContentType(contentType string) string {
+	ct := strings.ToLower(strings.TrimSpace(contentType))
+	mediaType, _, err := mime.ParseMediaType(ct)
+	if err == nil {
+		ct = mediaType
+	}
+
+	switch ct {
+	case "application/pdf":
+		return ".pdf"
+	case "application/zip":
+		return ".zip"
+	case "application/gzip":
+		return ".gz"
+	case "application/x-tar":
+		return ".tar"
+	case "application/octet-stream":
+		return ".bin"
+	case "image/png":
+		return ".png"
+	case "image/jpeg":
+		return ".jpg"
+	case "image/gif":
+		return ".gif"
+	}
+
+	return ""
+}
+
+func uniqueDownloadPath(dir, filename string) string {
+	full := filepath.Join(dir, filename)
+	if _, err := os.Stat(full); os.IsNotExist(err) {
+		return full
+	}
+
+	ext := filepath.Ext(filename)
+	base := strings.TrimSuffix(filename, ext)
+	for i := 1; ; i++ {
+		candidate := filepath.Join(dir, fmt.Sprintf("%s-%d%s", base, i, ext))
+		if _, err := os.Stat(candidate); os.IsNotExist(err) {
+			return candidate
+		}
+	}
 }
 
 func (b *Browser) openMailto(mailtoURL string) {
@@ -283,7 +474,12 @@ func (b *Browser) openImage(imgURL string) {
 	cmd.Stderr = os.Stderr
 
 	// Suspend tcell so the viewer gets raw terminal access.
-	b.UI.Screen.Fini()
+	b.UI.Suspend()
+	defer func() {
+		if err := b.UI.Resume(); err != nil {
+			fmt.Fprintf(os.Stderr, "failed to restore terminal: %v\n", err)
+		}
+	}()
 
 	fmt.Printf("Opening image: %s\n", imgURL)
 	if err := cmd.Run(); err != nil {
@@ -295,11 +491,6 @@ func (b *Browser) openImage(imgURL string) {
 	reader := bufio.NewReader(os.Stdin)
 	_, _ = reader.ReadBytes('\n')
 
-	// Re-initialize tcell.
-	if err := b.UI.Screen.Init(); err != nil {
-		panic("failed to re-init screen: " + err.Error())
-	}
-	b.UI.Screen.EnableMouse()
 	b.UI.SetStatus("")
 }
 
@@ -330,7 +521,9 @@ func (b *Browser) ShowWelcome() {
 			{Spans: []render.Span{{Text: "  /           Search in page", LinkIdx: -1}}},
 			{Spans: []render.Span{{Text: "  n / N       Next / previous search match", LinkIdx: -1}}},
 			{Spans: []render.Span{{Text: "  i           Open image under cursor", LinkIdx: -1}}},
-			{Spans: []render.Span{{Text: "  y           Show current URL", LinkIdx: -1}}},
+			{Spans: []render.Span{{Text: "  v / V       Enter visual / visual-line mode", LinkIdx: -1}}},
+			{Spans: []render.Span{{Text: "  y           Yank selection (or current line)", LinkIdx: -1}}},
+			{Spans: []render.Span{{Text: "  Mouse       Click to move, drag to select", LinkIdx: -1}}},
 			{Spans: []render.Span{{Text: "  q           Quit", LinkIdx: -1}}},
 			{},
 			{Spans: []render.Span{{Text: "Config:  ~/.config/wez/config.toml", Style: render.SpanStyle{Color: "code"}, LinkIdx: -1}}},

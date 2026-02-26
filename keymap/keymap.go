@@ -35,6 +35,8 @@ const (
 	Reload       = "reload"
 	OpenImage    = "open_image"
 	YankURL      = "yank_url"
+	VisualMode   = "visual_mode"
+	VisualLine   = "visual_line_mode"
 	OpenMailto   = "open_mailto"
 )
 
@@ -73,6 +75,8 @@ func DefaultBindings() map[string][]string {
 		Reload:       {"r"},
 		OpenImage:    {"i"},
 		YankURL:      {"y"},
+		VisualMode:   {"v"},
+		VisualLine:   {"V"},
 	}
 }
 
@@ -285,4 +289,6 @@ search_prev    = ["N"]
 reload         = ["r"]
 open_image     = ["i"]
 yank_url       = ["y"]
+visual_mode    = ["v"]
+visual_line_mode = ["V"]
 `

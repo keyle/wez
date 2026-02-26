@@ -1,8 +1,10 @@
 package config
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/BurntSushi/toml"
 	"github.com/gdamore/tcell/v2"
@@ -13,6 +15,7 @@ const Version = "1.0"
 type Config struct {
 	ImageViewer   string      `toml:"image_viewer"`
 	MailtoHandler string      `toml:"mailto_handler"`
+	DownloadDir   string      `toml:"download_dir"`
 	Colors        ColorConfig `toml:"colors"`
 }
 
@@ -34,6 +37,7 @@ func Default() Config {
 	return Config{
 		ImageViewer:   "viu %s",
 		MailtoHandler: "open mailto:%s",
+		DownloadDir:   defaultDownloadDir(),
 		Colors: ColorConfig{
 			Link:        "blue",
 			VisitedLink: "purple",
@@ -72,6 +76,11 @@ func Load() (Config, error) {
 	if err != nil {
 		return cfg, err
 	}
+
+	if cfg.DownloadDir == "" {
+		cfg.DownloadDir = defaultDownloadDir()
+	}
+	cfg.DownloadDir = expandHomePath(cfg.DownloadDir)
 
 	return cfg, nil
 }
@@ -131,18 +140,70 @@ func ensureConfigFile(path string) error {
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return err
 	}
-	return os.WriteFile(path, []byte(defaultConfigTOML), 0o644)
+	return os.WriteFile(path, []byte(defaultConfigTOML(Default())), 0o644)
 }
 
-const defaultConfigTOML = `# wez terminal browser configuration
+func defaultDownloadDir() string {
+	homeDir, err := os.UserHomeDir()
+	if err != nil || homeDir == "" {
+		return "."
+	}
 
-# External image viewer command. %s is replaced with the image file path.
-image_viewer = "viu %s"
+	downloads := filepath.Join(homeDir, "Downloads")
+	if info, err := os.Stat(downloads); err == nil && info.IsDir() {
+		return downloads
+	}
 
-# Command to handle mailto: links. %s is replaced with the email address.
-# macOS:  "open mailto:%s"
-# Linux:  "xdg-open mailto:%s"
-mailto_handler = "open mailto:%s"
+	return homeDir
+}
+
+func expandHomePath(path string) string {
+	if path == "" || path[0] != '~' {
+		return path
+	}
+
+	homeDir, err := os.UserHomeDir()
+	if err != nil || homeDir == "" {
+		return path
+	}
+
+	if path == "~" {
+		return homeDir
+	}
+	if strings.HasPrefix(path, "~/") {
+		return filepath.Join(homeDir, path[2:])
+	}
+
+	return path
+}
+
+func shortHome(path string) string {
+	homeDir, err := os.UserHomeDir()
+	if err != nil || homeDir == "" {
+		return path
+	}
+	if path == homeDir {
+		return "~"
+	}
+	if strings.HasPrefix(path, homeDir+string(os.PathSeparator)) {
+		return "~" + path[len(homeDir):]
+	}
+	return path
+}
+
+func defaultConfigTOML(cfg Config) string {
+	return fmt.Sprintf(`# wez terminal browser configuration
+
+# External image viewer command. %%s is replaced with the image file path.
+image_viewer = "viu %%s"
+
+# Command to handle mailto: links. %%s is replaced with the email address.
+# macOS:  "open mailto:%%s"
+# Linux:  "xdg-open mailto:%%s"
+mailto_handler = "open mailto:%%s"
+
+# Directory where downloaded binary files (e.g. PDF, ZIP) are saved.
+download_dir = %q
 
 [colors]
 # Available colors: black, red, green, yellow, blue, purple, cyan, white,
@@ -158,4 +219,5 @@ image       = "yellow"
 hrule       = "gray"
 url_bar     = "white"
 status_bar  = "white"
-`
+`, shortHome(cfg.DownloadDir))
+}

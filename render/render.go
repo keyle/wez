@@ -53,15 +53,52 @@ func RenderPlainText(text []byte, pageURL string, width int) *Document {
 	lines := strings.Split(string(text), "\n")
 	var docLines []Line
 	for _, line := range lines {
-		docLines = append(docLines, Line{
-			Spans: []Span{{Text: line, LinkIdx: -1}},
-		})
+		wrapped := wrapPlainLine(line, width)
+		for _, part := range wrapped {
+			docLines = append(docLines, Line{
+				Spans: []Span{{Text: part, LinkIdx: -1}},
+			})
+		}
 	}
 	return &Document{
 		Title: pageURL,
 		URL:   pageURL,
 		Lines: docLines,
 	}
+}
+
+func wrapPlainLine(line string, width int) []string {
+	if width <= 0 {
+		return []string{line}
+	}
+	if line == "" {
+		return []string{""}
+	}
+
+	var out []string
+	runes := []rune(line)
+	for start := 0; start < len(runes); {
+		w := 0
+		end := start
+		for end < len(runes) {
+			rw := runewidth.RuneWidth(runes[end])
+			if rw < 1 {
+				rw = 1
+			}
+			if w+rw > width {
+				break
+			}
+			w += rw
+			end++
+		}
+		if end == start {
+			end++
+		}
+		out = append(out, string(runes[start:end]))
+		start = end
+	}
+
+	return out
 }
 
 type listCtx struct {
@@ -100,6 +137,9 @@ type renderer struct {
 
 	// List context
 	listStack []listCtx
+
+	// Table row context (number of cells rendered in current row)
+	tableRowCells []int
 
 	// Page URL for resolving relative links.
 	pageURL string
@@ -427,7 +467,36 @@ func (r *renderer) handleElement(n *html.Node) {
 		r.flushLine()
 
 	case atom.Table:
-		r.handleTable(n)
+		r.ensureBlankLine()
+		r.walkChildren(n)
+		r.ensureBlankLine()
+
+	case atom.Thead, atom.Tbody, atom.Tfoot:
+		r.walkChildren(n)
+
+	case atom.Tr:
+		r.flushLine()
+		r.tableRowCells = append(r.tableRowCells, 0)
+		r.walkChildren(n)
+		r.tableRowCells = r.tableRowCells[:len(r.tableRowCells)-1]
+		r.flushLine()
+
+	case atom.Td, atom.Th:
+		if len(r.tableRowCells) > 0 {
+			i := len(r.tableRowCells) - 1
+			if r.tableRowCells[i] > 0 {
+				r.appendToLine(" ")
+			}
+			r.tableRowCells[i]++
+		}
+		if tag == atom.Th {
+			oldBold := r.bold
+			r.bold = true
+			r.walkChildren(n)
+			r.bold = oldBold
+		} else {
+			r.walkChildren(n)
+		}
 
 	case atom.Img:
 		r.handleImage(n)

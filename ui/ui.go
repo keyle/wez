@@ -2,6 +2,8 @@ package ui
 
 import (
 	"fmt"
+	"os/exec"
+	"runtime"
 	"strings"
 
 	"github.com/gdamore/tcell/v2"
@@ -19,6 +21,8 @@ const (
 	ModeNormal Mode = iota
 	ModeURLInput
 	ModeSearch
+	ModeVisual
+	ModeVisualLine
 )
 
 // Action is returned by HandleEvent to tell the browser what to do.
@@ -36,7 +40,7 @@ const (
 	ActionSearch    // search for InputBuffer
 	ActionSearchNext
 	ActionSearchPrev
-	ActionYankURL    // copy current URL
+	ActionYankURL    // yank selected text or current line
 	ActionOpenMailto // open mailto link under cursor
 )
 
@@ -61,11 +65,22 @@ type UI struct {
 	InputPrompt string
 
 	// Status
-	StatusMsg  string
-	StatusLink string // link URL shown in status bar
+	StatusMsg   string
+	StatusLink  string // link URL shown in status bar
+	statusAlert bool
 
 	// Pending key for multi-key sequences (e.g. gg)
 	pendingSeq string
+
+	// Visual selection
+	selAnchorY int
+	selAnchorX int
+
+	// Mouse drag state
+	mouseSelecting bool
+	mouseStartY    int
+	mouseStartX    int
+	mouseHadDrag   bool
 
 	// Search
 	SearchTerm    string
@@ -100,7 +115,34 @@ func New(cfg config.Config, km *keymap.Keymap) (*UI, error) {
 
 // Close shuts down the terminal.
 func (u *UI) Close() {
+	if u.Screen == nil {
+		return
+	}
+	u.Screen.HideCursor()
+	u.Screen.DisableMouse()
 	u.Screen.Fini()
+}
+
+// Suspend releases terminal control for external interactive commands.
+func (u *UI) Suspend() {
+	if u.Screen == nil {
+		return
+	}
+	u.Screen.HideCursor()
+	u.Screen.DisableMouse()
+	u.Screen.Fini()
+}
+
+// Resume reacquires terminal control after Suspend.
+func (u *UI) Resume() error {
+	if u.Screen == nil {
+		return nil
+	}
+	if err := u.Screen.Init(); err != nil {
+		return err
+	}
+	u.Screen.EnableMouse()
+	return nil
 }
 
 // SetDocument sets the current document and resets the viewport.
@@ -111,11 +153,20 @@ func (u *UI) SetDocument(doc *render.Document) {
 	u.CursorX = 0
 	u.StatusLink = ""
 	u.SearchMatches = nil
+	u.Mode = ModeNormal
+	u.mouseSelecting = false
 }
 
 // SetStatus sets a temporary status message.
 func (u *UI) SetStatus(msg string) {
 	u.StatusMsg = msg
+	u.statusAlert = false
+}
+
+// SetStatusAlert sets a highlighted status message.
+func (u *UI) SetStatusAlert(msg string) {
+	u.StatusMsg = msg
+	u.statusAlert = true
 }
 
 // Draw renders the current state to the terminal.
@@ -132,6 +183,7 @@ func (u *UI) Draw() {
 	}
 
 	contentHeight := contentEnd - contentStart
+	u.clampCursor()
 
 	// Draw content.
 	if u.Doc != nil {
@@ -149,10 +201,18 @@ func (u *UI) Draw() {
 						break
 					}
 					rw := runewidth.RuneWidth(r)
+					if rw < 1 {
+						rw = 1
+					}
 					drawStyle := style
-					// Highlight cursor position.
-					if docLine == u.CursorY && x == u.CursorX {
+					if r == ' ' && span.Style.Underline {
+						drawStyle = drawStyle.Underline(false)
+					}
+					if u.isSelectedCell(docLine, x) {
 						drawStyle = drawStyle.Reverse(true)
+					}
+					if docLine == u.CursorY && x == u.CursorX {
+						drawStyle = drawStyle.Reverse(true).Bold(true)
 					}
 					u.Screen.SetContent(x, screenRow, r, nil, drawStyle)
 					for i := 1; i < rw; i++ {
@@ -162,6 +222,21 @@ func (u *UI) Draw() {
 					}
 					x += rw
 				}
+			}
+
+			// Always draw a visible cursor cell, even past end-of-line.
+			if docLine == u.CursorY && u.CursorX >= 0 && u.CursorX < w {
+				mainc, combc, style, _ := u.Screen.GetContent(u.CursorX, screenRow)
+				if mainc == 0 {
+					mainc = ' '
+					combc = nil
+					style = tcell.StyleDefault
+				}
+				style = style.Reverse(true).Bold(true)
+				if mainc == ' ' {
+					style = style.Underline(false)
+				}
+				u.Screen.SetContent(u.CursorX, screenRow, mainc, combc, style)
 			}
 		}
 	}
@@ -189,6 +264,9 @@ func (u *UI) Draw() {
 	statusStyle := tcell.StyleDefault.
 		Background(config.ParseColor(u.Cfg.Colors.StatusBar)).
 		Foreground(tcell.ColorBlack)
+	if u.statusAlert {
+		statusStyle = tcell.StyleDefault.Background(tcell.ColorYellow).Foreground(tcell.ColorBlack)
+	}
 	for x := 0; x < w; x++ {
 		u.Screen.SetContent(x, h-1, ' ', nil, statusStyle)
 	}
@@ -197,6 +275,10 @@ func (u *UI) Draw() {
 	leftStatus := ""
 	if u.StatusMsg != "" {
 		leftStatus = u.StatusMsg
+	} else if u.Mode == ModeVisual {
+		leftStatus = "-- VISUAL --"
+	} else if u.Mode == ModeVisualLine {
+		leftStatus = "-- VISUAL LINE --"
 	} else if u.StatusLink != "" {
 		leftStatus = u.StatusLink
 	}
@@ -248,13 +330,20 @@ func (u *UI) HandleEvent(ev tcell.Event) Action {
 
 	case *tcell.EventKey:
 		switch u.Mode {
-		case ModeNormal:
-			return u.handleNormalKey(ev)
 		case ModeURLInput:
 			return u.handleInputKey(ev, ActionNavigate)
 		case ModeSearch:
 			return u.handleInputKey(ev, ActionSearch)
+		default:
+			return u.handleNormalKey(ev)
 		}
+
+	case *tcell.EventMouse:
+		if u.Mode == ModeURLInput || u.Mode == ModeSearch {
+			return ActionNone
+		}
+		u.handleMouseEvent(ev)
+		return ActionNone
 	}
 	return ActionNone
 }
@@ -267,6 +356,9 @@ func (u *UI) handleNormalKey(ev *tcell.EventKey) Action {
 	case tcell.KeyEscape:
 		u.StatusMsg = ""
 		u.pendingSeq = ""
+		if u.isVisualMode() {
+			u.Mode = ModeNormal
+		}
 		return ActionNone
 	}
 
@@ -386,6 +478,12 @@ func (u *UI) executeAction(actionName string) Action {
 		u.InputBuffer = ""
 		u.InputCursor = 0
 
+	case keymap.VisualMode:
+		u.startVisual(false)
+
+	case keymap.VisualLine:
+		u.startVisual(true)
+
 	case keymap.SearchNext:
 		return ActionSearchNext
 
@@ -402,6 +500,11 @@ func (u *UI) executeAction(actionName string) Action {
 		return ActionYankURL
 	}
 
+	u.clampCursor()
+	if !u.isVisualMode() {
+		u.selAnchorY = u.CursorY
+		u.selAnchorX = u.CursorX
+	}
 	return ActionNone
 }
 
@@ -575,6 +678,278 @@ func (u *UI) updateStatusLink() {
 	if ok {
 		u.StatusLink = url
 	}
+}
+
+func (u *UI) isVisualMode() bool {
+	return u.Mode == ModeVisual || u.Mode == ModeVisualLine
+}
+
+func (u *UI) startVisual(lineWise bool) {
+	if lineWise {
+		if u.Mode == ModeVisualLine {
+			u.Mode = ModeNormal
+			return
+		}
+		u.Mode = ModeVisualLine
+	} else {
+		if u.Mode == ModeVisual {
+			u.Mode = ModeNormal
+			return
+		}
+		u.Mode = ModeVisual
+	}
+	u.selAnchorY = u.CursorY
+	u.selAnchorX = u.CursorX
+}
+
+func (u *UI) clampCursor() {
+	w, _ := u.Screen.Size()
+	if u.CursorX < 0 {
+		u.CursorX = 0
+	}
+	if w > 0 && u.CursorX >= w {
+		u.CursorX = w - 1
+	}
+
+	if u.CursorY < 0 {
+		u.CursorY = 0
+	}
+	if u.Doc != nil && len(u.Doc.Lines) > 0 && u.CursorY >= len(u.Doc.Lines) {
+		u.CursorY = len(u.Doc.Lines) - 1
+	}
+}
+
+func (u *UI) isSelectedCell(line, col int) bool {
+	if !u.isVisualMode() {
+		return false
+	}
+
+	if u.Mode == ModeVisualLine {
+		startLine := minInt(u.selAnchorY, u.CursorY)
+		endLine := maxInt(u.selAnchorY, u.CursorY)
+		return line >= startLine && line <= endLine
+	}
+
+	startLine, startCol, endLine, endCol := u.selectionBounds()
+	if line < startLine || line > endLine {
+		return false
+	}
+	if startLine == endLine {
+		return col >= startCol && col <= endCol
+	}
+	if line == startLine {
+		return col >= startCol
+	}
+	if line == endLine {
+		return col <= endCol
+	}
+	return true
+}
+
+func (u *UI) selectionBounds() (startLine, startCol, endLine, endCol int) {
+	if u.selAnchorY < u.CursorY || (u.selAnchorY == u.CursorY && u.selAnchorX <= u.CursorX) {
+		return u.selAnchorY, u.selAnchorX, u.CursorY, u.CursorX
+	}
+	return u.CursorY, u.CursorX, u.selAnchorY, u.selAnchorX
+}
+
+func (u *UI) handleMouseEvent(ev *tcell.EventMouse) {
+	x, y := ev.Position()
+	_, h := u.Screen.Size()
+	if y < 0 || y >= h-1 {
+		if ev.Buttons() == tcell.ButtonNone {
+			u.mouseSelecting = false
+		}
+		return
+	}
+
+	docLine := u.ScrollY + y
+	if u.Doc != nil {
+		if docLine < 0 {
+			docLine = 0
+		}
+		if docLine >= len(u.Doc.Lines) {
+			docLine = len(u.Doc.Lines) - 1
+		}
+	}
+
+	u.CursorY = docLine
+	u.CursorX = x
+	u.clampCursor()
+	u.updateStatusLink()
+
+	buttons := ev.Buttons()
+	if buttons&tcell.WheelUp != 0 {
+		u.scroll(-3)
+		return
+	}
+	if buttons&tcell.WheelDown != 0 {
+		u.scroll(3)
+		return
+	}
+
+	if buttons&tcell.Button1 != 0 {
+		if !u.mouseSelecting {
+			u.mouseSelecting = true
+			u.mouseStartY = u.CursorY
+			u.mouseStartX = u.CursorX
+			u.mouseHadDrag = false
+		}
+
+		if u.CursorY != u.mouseStartY || u.CursorX != u.mouseStartX {
+			u.mouseHadDrag = true
+			if !u.isVisualMode() {
+				u.Mode = ModeVisual
+				u.selAnchorY = u.mouseStartY
+				u.selAnchorX = u.mouseStartX
+			}
+		}
+		return
+	}
+
+	if buttons == tcell.ButtonNone && u.mouseSelecting {
+		if !u.mouseHadDrag && u.isVisualMode() {
+			u.Mode = ModeNormal
+		}
+		u.mouseSelecting = false
+	}
+}
+
+// Yank copies the current selection (visual modes) or current line (normal mode)
+// to the system clipboard when available.
+func (u *UI) Yank() {
+	if u.Doc == nil || len(u.Doc.Lines) == 0 {
+		u.SetStatus("Nothing to yank")
+		return
+	}
+
+	var text string
+	if u.isVisualMode() {
+		text = u.selectedText()
+		u.Mode = ModeNormal
+	} else {
+		if u.CursorY < 0 || u.CursorY >= len(u.Doc.Lines) {
+			u.SetStatus("Nothing to yank")
+			return
+		}
+		text = lineText(u.Doc.Lines[u.CursorY])
+	}
+
+	if text == "" {
+		u.SetStatus("Nothing to yank")
+		return
+	}
+
+	if err := copyToClipboard(text); err != nil {
+		u.SetStatus(fmt.Sprintf("Yanked %d chars (no clipboard helper)", len([]rune(text))))
+		return
+	}
+
+	u.SetStatus(fmt.Sprintf("Yanked %d chars", len([]rune(text))))
+}
+
+func (u *UI) selectedText() string {
+	if u.Doc == nil || len(u.Doc.Lines) == 0 {
+		return ""
+	}
+
+	if u.Mode == ModeVisualLine {
+		startLine := minInt(u.selAnchorY, u.CursorY)
+		endLine := maxInt(u.selAnchorY, u.CursorY)
+		var parts []string
+		for line := startLine; line <= endLine && line < len(u.Doc.Lines); line++ {
+			parts = append(parts, lineText(u.Doc.Lines[line]))
+		}
+		return strings.Join(parts, "\n")
+	}
+
+	startLine, startCol, endLine, endCol := u.selectionBounds()
+	var parts []string
+	for line := startLine; line <= endLine && line < len(u.Doc.Lines); line++ {
+		s := 0
+		e := 1 << 30
+		if line == startLine {
+			s = startCol
+		}
+		if line == endLine {
+			e = endCol
+		}
+		parts = append(parts, sliceLineByCol(u.Doc.Lines[line], s, e))
+	}
+	return strings.Join(parts, "\n")
+}
+
+func sliceLineByCol(line render.Line, startCol, endCol int) string {
+	if endCol < startCol {
+		return ""
+	}
+
+	x := 0
+	var sb strings.Builder
+	for _, span := range line.Spans {
+		for _, r := range span.Text {
+			rw := runewidth.RuneWidth(r)
+			if rw < 1 {
+				rw = 1
+			}
+			rStart := x
+			rEnd := x + rw - 1
+
+			if rEnd < startCol {
+				x += rw
+				continue
+			}
+			if rStart > endCol {
+				return sb.String()
+			}
+
+			sb.WriteRune(r)
+			x += rw
+		}
+	}
+
+	return sb.String()
+}
+
+func copyToClipboard(text string) error {
+	var commands [][]string
+	switch runtime.GOOS {
+	case "darwin":
+		commands = [][]string{{"pbcopy"}}
+	default:
+		commands = [][]string{
+			{"wl-copy"},
+			{"xclip", "-selection", "clipboard"},
+			{"xsel", "--clipboard", "--input"},
+		}
+	}
+
+	for _, args := range commands {
+		if _, err := exec.LookPath(args[0]); err != nil {
+			continue
+		}
+		cmd := exec.Command(args[0], args[1:]...)
+		cmd.Stdin = strings.NewReader(text)
+		if err := cmd.Run(); err == nil {
+			return nil
+		}
+	}
+
+	return fmt.Errorf("clipboard helper not found")
+}
+
+func minInt(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
+}
+
+func maxInt(a, b int) int {
+	if a > b {
+		return a
+	}
+	return b
 }
 
 // PerformSearch finds all occurrences of the search term in the document.
