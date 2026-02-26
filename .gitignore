@@ -1,0 +1,37 @@
+# --- Go build/test artifacts ---
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.a
+*.o
+*.out
+*.test
+*.prof
+*.coverprofile
+*.cov
+
+# Binaries / build dirs (adjust to your repo conventions)
+build/
+out/
+
+# Go workspace file (Go 1.18+)
+go.work
+go.work.sum
+
+# Vendor (ignore if you don't commit vendor/)
+vendor/
+
+# --- Tooling / IDEs ---
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# --- OS junk ---
+.DS_Store
+Thumbs.db
+
+# --- binaries ---
+wez
