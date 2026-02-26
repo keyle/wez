@@ -48,8 +48,23 @@ func TestDefault(t *testing.T) {
 	if cfg.Colors.Link != "blue" {
 		t.Errorf("expected default link color 'blue', got %q", cfg.Colors.Link)
 	}
-	if cfg.Colors.Noscript != "white" {
-		t.Errorf("expected default noscript color 'white', got %q", cfg.Colors.Noscript)
+	if cfg.Colors.Heading != "darkyellow" {
+		t.Errorf("expected default heading color 'darkyellow', got %q", cfg.Colors.Heading)
+	}
+	if cfg.Colors.Code != "orange" {
+		t.Errorf("expected default code color 'orange', got %q", cfg.Colors.Code)
+	}
+	if cfg.Colors.Noscript != "black" {
+		t.Errorf("expected default noscript color 'black', got %q", cfg.Colors.Noscript)
+	}
+	if cfg.Colors.NoscriptBg != "gray" {
+		t.Errorf("expected default noscript_bg color 'gray', got %q", cfg.Colors.NoscriptBg)
+	}
+	if cfg.Colors.BlockQuote != "teal" {
+		t.Errorf("expected default blockquote color 'teal', got %q", cfg.Colors.BlockQuote)
+	}
+	if cfg.Colors.Image != "green" {
+		t.Errorf("expected default image color 'green', got %q", cfg.Colors.Image)
 	}
 }
 

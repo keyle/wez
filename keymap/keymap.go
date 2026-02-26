@@ -39,6 +39,9 @@ const (
 	YankLinkURL  = "yank_link_url"
 	VisualMode   = "visual_mode"
 	VisualLine   = "visual_line_mode"
+	OpenHistory  = "open_history_view"
+	ClearCache   = "clear_cache"
+	ClearHistory = "clear_history"
 	OpenMailto   = "open_mailto"
 )
 
@@ -64,7 +67,8 @@ func DefaultBindings() map[string][]string {
 		HalfPageUp:   {"Ctrl-U"},
 		GoTop:        {"gg"},
 		GoBottom:     {"G"},
-		Back:         {"b", "B", "H", "Backspace"},
+		Back:         {"b", "B", "Backspace"},
+		OpenHistory:  {"H"},
 		Forward:      {"L"},
 		OpenURL:      {"o"},
 		OpenURLEdit:  {"O"},
@@ -81,6 +85,8 @@ func DefaultBindings() map[string][]string {
 		YankLinkURL:  {"Y"},
 		VisualMode:   {"v"},
 		VisualLine:   {"V"},
+		ClearCache:   {"zc"},
+		ClearHistory: {"zh"},
 	}
 }
 
@@ -280,7 +286,8 @@ half_page_down = ["Ctrl-D"]
 half_page_up   = ["Ctrl-U"]
 go_top         = ["gg"]
 go_bottom      = ["G"]
-back           = ["b", "B", "H", "Backspace"]
+back           = ["b", "B", "Backspace"]
+open_history_view = ["H"]
 forward        = ["L"]
 open_url       = ["o"]
 open_url_edit  = ["O"]
@@ -297,4 +304,6 @@ yank_url       = ["y"]
 yank_link_url  = ["Y"]
 visual_mode    = ["v"]
 visual_line_mode = ["V"]
+clear_cache    = ["zc"]
+clear_history  = ["zh"]
 `

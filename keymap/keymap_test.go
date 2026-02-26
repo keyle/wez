@@ -18,7 +18,7 @@ func TestDefaultBindings(t *testing.T) {
 		GoTop, GoBottom, Back, Forward,
 		OpenURL, OpenURLEdit, FollowLink, NextLink, PrevLink,
 		Search, SearchWeb, SearchNext, SearchPrev, Reload, OpenImage, YankURL, YankLinkURL,
-		VisualMode, VisualLine,
+		VisualMode, VisualLine, OpenHistory, ClearCache, ClearHistory,
 	}
 
 	for _, action := range required {
@@ -51,8 +51,8 @@ func TestBackIncludesBKeys(t *testing.T) {
 	if !has("B") {
 		t.Error("expected 'B' in back bindings")
 	}
-	if !has("H") {
-		t.Error("expected 'H' still in back bindings")
+	if has("H") {
+		t.Error("expected 'H' removed from back bindings")
 	}
 	if !has("Backspace") {
 		t.Error("expected 'Backspace' in back bindings")
@@ -182,17 +182,40 @@ func TestSpecialKeyBindings(t *testing.T) {
 	if action != YankLinkURL {
 		t.Errorf("expected Y -> yank_link_url, got %q", action)
 	}
+
+	// H -> open_history_view.
+	action, _ = km.Resolve("", "H")
+	if action != OpenHistory {
+		t.Errorf("expected H -> open_history_view, got %q", action)
+	}
+
+	// zc -> clear_cache.
+	action, pending := km.Resolve("", "z")
+	if action != "" || pending != "z" {
+		t.Errorf("expected z to start sequence, got action=%q pending=%q", action, pending)
+	}
+	action, pending = km.Resolve("z", "c")
+	if action != ClearCache || pending != "" {
+		t.Errorf("expected zc -> clear_cache, got action=%q pending=%q", action, pending)
+	}
+
+	// zh -> clear_history.
+	action, pending = km.Resolve("", "z")
+	action, pending = km.Resolve("z", "h")
+	if action != ClearHistory || pending != "" {
+		t.Errorf("expected zh -> clear_history, got action=%q pending=%q", action, pending)
+	}
 }
 
 func TestUnboundKey(t *testing.T) {
 	km := New()
 
-	action, pending := km.Resolve("", "z")
+	action, pending := km.Resolve("", "x")
 	if action != "" {
-		t.Errorf("expected no action for unbound 'z', got %q", action)
+		t.Errorf("expected no action for unbound 'x', got %q", action)
 	}
 	if pending != "" {
-		t.Errorf("expected no pending for unbound 'z', got %q", pending)
+		t.Errorf("expected no pending for unbound 'x', got %q", pending)
 	}
 }
 
@@ -232,7 +255,7 @@ back = ["Backspace"]
 		t.Error("expected 'q' to no longer be quit after override")
 	}
 
-	// Back should only be Backspace now (user removed b, B, H).
+	// Back should only be Backspace now (user removed b, B).
 	action, _ = km.Resolve("", "Backspace")
 	if action != Back {
 		t.Errorf("expected Backspace -> back, got %q", action)

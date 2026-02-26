@@ -106,6 +106,16 @@ func (h *History) Entries() []Entry {
 	return result
 }
 
+func (h *History) Clear() error {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.entries = nil
+	if err := os.Remove(h.path); err != nil && !os.IsNotExist(err) {
+		return err
+	}
+	return nil
+}
+
 func (h *History) Contains(url string) bool {
 	h.mu.Lock()
 	defer h.mu.Unlock()

@@ -104,11 +104,13 @@ Default normal-mode bindings (subset):
 - `gg` / `G` - jump top / bottom
 - `Ctrl-F` / `Ctrl-B` - page down / up
 - `Ctrl-D` / `Ctrl-U` - half-page down / up
-- `Tab` / `Shift-Tab` - next / previous link
+- `Tab` / `Shift-Tab` - next / previous focus target (link or form control)
 - `Enter` - activate link/control under cursor
-- `b` / `B` / `H` / `Backspace` - back
+- `b` / `B` / `Backspace` - back
+- `H` - open history view (Esc to return)
 - `L` - forward
 - `r` / `R` - reload
+- `zc` / `zh` - clear cache / clear history
 - `/` then `n` / `N` - search, next / previous match
 - `i` - open image under cursor (external viewer)
 - `v` / `V` - visual / visual-line selection
@@ -128,6 +130,12 @@ All bindings are remappable in `~/.config/wez/keymap.toml`.
 
 - `~/.cache/wez/history`
 	Persisted browsing history.
+
+- `~/.cache/wez/seen_urls`
+	Persisted set of visited URLs for visited-link coloring.
+
+- `~/.cache/wez/cookies.json`
+	Persisted cookie jar (enabled by default).
 
 # AUTHORS
 

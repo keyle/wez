@@ -71,6 +71,53 @@ func TestRenderLinks(t *testing.T) {
 	}
 }
 
+func TestRenderIgnoresJavaScriptLinks(t *testing.T) {
+	html := `<html><body><a href="javascript:void(0)">Click me</a></body></html>`
+	doc := Render([]byte(html), "https://example.com", 80)
+
+	if len(doc.Links) != 0 {
+		t.Fatalf("expected javascript link to be non-clickable, got %d links", len(doc.Links))
+	}
+
+	foundVisitedColor := false
+	for _, line := range doc.Lines {
+		for _, span := range line.Spans {
+			if strings.Contains(span.Text, "Click me") && span.Style.Color == "visited_link" {
+				foundVisitedColor = true
+			}
+		}
+	}
+	if !foundVisitedColor {
+		t.Fatalf("expected javascript link text to render with visited color, got: %q", docText(doc))
+	}
+}
+
+func TestRenderVisitedLinksStyled(t *testing.T) {
+	html := `<html><body><a href="/seen">Seen</a> <a href="/new">New</a></body></html>`
+	doc := RenderWithVisited([]byte(html), "https://example.com", 80, func(u string) bool {
+		return u == "https://example.com/seen"
+	})
+
+	if len(doc.Links) != 2 {
+		t.Fatalf("expected 2 links, got %d", len(doc.Links))
+	}
+
+	var seenVisited, newNormal bool
+	for _, line := range doc.Lines {
+		for _, span := range line.Spans {
+			if strings.Contains(span.Text, "Seen") && span.Style.Color == "visited_link" {
+				seenVisited = true
+			}
+			if strings.Contains(span.Text, "New") && span.Style.Color == "link" {
+				newNormal = true
+			}
+		}
+	}
+	if !seenVisited || !newNormal {
+		t.Fatalf("expected visited/new coloring, got: %q", docText(doc))
+	}
+}
+
 func TestRenderRelativeLinks(t *testing.T) {
 	html := `<html><body><a href="/about">About</a></body></html>`
 	doc := Render([]byte(html), "http://example.com/page", 80)
@@ -502,6 +549,52 @@ func TestNextPrevLink(t *testing.T) {
 	_, _, _, ok = doc.PrevLink(100, 0)
 	if !ok {
 		t.Error("expected PrevLink to find a link")
+	}
+}
+
+func TestNextPrevFocusableIncludesControls(t *testing.T) {
+	doc := &Document{
+		Lines: []Line{{}},
+		Links: []Link{
+			{URL: "https://example.com/a", Line: 0, Col: 1},
+			{URL: "https://example.com/b", Line: 0, Col: 30},
+		},
+		Controls: []Control{
+			{Kind: "input", Type: "text", Line: 0, Col: 10, Width: 6},
+			{Kind: "button", Type: "submit", Line: 0, Col: 20, Width: 5},
+			{Kind: "input", Type: "hidden", Line: -1, Col: -1, Width: 0},
+			{Kind: "input", Type: "text", Line: 0, Col: 25, Width: 6, Disabled: true},
+		},
+	}
+
+	line, col, ok := doc.NextFocusable(0, 0)
+	if !ok || line != 0 || col != 1 {
+		t.Fatalf("expected first focus target at 0:1, got %d:%d ok=%v", line, col, ok)
+	}
+	line, col, ok = doc.NextFocusable(0, 1)
+	if !ok || line != 0 || col != 10 {
+		t.Fatalf("expected next focus target at 0:10, got %d:%d ok=%v", line, col, ok)
+	}
+	line, col, ok = doc.NextFocusable(0, 10)
+	if !ok || line != 0 || col != 20 {
+		t.Fatalf("expected next focus target at 0:20, got %d:%d ok=%v", line, col, ok)
+	}
+	line, col, ok = doc.NextFocusable(0, 20)
+	if !ok || line != 0 || col != 30 {
+		t.Fatalf("expected next focus target at 0:30, got %d:%d ok=%v", line, col, ok)
+	}
+	line, col, ok = doc.NextFocusable(0, 30)
+	if !ok || line != 0 || col != 1 {
+		t.Fatalf("expected wrapped focus target at 0:1, got %d:%d ok=%v", line, col, ok)
+	}
+
+	line, col, ok = doc.PrevFocusable(0, 30)
+	if !ok || line != 0 || col != 20 {
+		t.Fatalf("expected previous focus target at 0:20, got %d:%d ok=%v", line, col, ok)
+	}
+	line, col, ok = doc.PrevFocusable(0, 1)
+	if !ok || line != 0 || col != 30 {
+		t.Fatalf("expected wrapped previous focus target at 0:30, got %d:%d ok=%v", line, col, ok)
 	}
 }
 

@@ -88,3 +88,17 @@ func TestHistoryCreatesDirectory(t *testing.T) {
 		t.Error("expected directory to be created")
 	}
 }
+
+func TestHistoryClear(t *testing.T) {
+	tmpDir := t.TempDir()
+	h := &History{path: filepath.Join(tmpDir, "history")}
+	if err := h.Add("http://example.com", "Example"); err != nil {
+		t.Fatal(err)
+	}
+	if err := h.Clear(); err != nil {
+		t.Fatal(err)
+	}
+	if len(h.Entries()) != 0 {
+		t.Fatal("expected in-memory history to be empty after clear")
+	}
+}

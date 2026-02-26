@@ -14,6 +14,11 @@ import (
 
 // Render parses raw HTML and produces a Document ready for terminal display.
 func Render(htmlBytes []byte, pageURL string, width int) *Document {
+	return RenderWithVisited(htmlBytes, pageURL, width, nil)
+}
+
+// RenderWithVisited parses HTML and marks links with visited styling when callback returns true.
+func RenderWithVisited(htmlBytes []byte, pageURL string, width int, isVisited func(string) bool) *Document {
 	doc, err := html.Parse(strings.NewReader(string(htmlBytes)))
 	if err != nil {
 		return &Document{
@@ -28,6 +33,7 @@ func Render(htmlBytes []byte, pageURL string, width int) *Document {
 		curLinkIdx:    -1,
 		curControlIdx: -1,
 		pageURL:       pageURL,
+		isVisited:     isVisited,
 	}
 
 	// Extract title.
@@ -156,6 +162,9 @@ type renderer struct {
 
 	// Page URL for resolving relative links.
 	pageURL string
+
+	// Link visit callback.
+	isVisited func(string) bool
 }
 
 func (r *renderer) currentStyle() SpanStyle {
@@ -661,6 +670,13 @@ func (r *renderer) handleLink(n *html.Node) {
 		r.walkChildren(n)
 		return
 	}
+	if isJavaScriptURL(href) {
+		oldColor := r.color
+		r.color = "visited_link"
+		r.walkChildren(n)
+		r.color = oldColor
+		return
+	}
 
 	// If spacing was pending before the <a>, emit it outside link styling.
 	if r.pendingSpace && r.curCol > r.indent {
@@ -670,6 +686,13 @@ func (r *renderer) handleLink(n *html.Node) {
 
 	// Resolve relative URL.
 	resolved := r.resolveURL(href)
+	if resolved == "" || isJavaScriptURL(resolved) {
+		oldColor := r.color
+		r.color = "visited_link"
+		r.walkChildren(n)
+		r.color = oldColor
+		return
+	}
 
 	// Register link.
 	linkIdx := len(r.links)
@@ -683,7 +706,11 @@ func (r *renderer) handleLink(n *html.Node) {
 	oldUnderline := r.underline
 	oldLinkIdx := r.curLinkIdx
 	oldSuppressLeadingSpace := r.suppressLeadingSpace
-	r.color = "link"
+	if r.isVisited != nil && r.isVisited(resolved) {
+		r.color = "visited_link"
+	} else {
+		r.color = "link"
+	}
 	r.underline = true
 	r.curLinkIdx = linkIdx
 	r.suppressLeadingSpace = true
@@ -866,6 +893,8 @@ func (r *renderer) handleForm(n *html.Node) {
 	action := strings.TrimSpace(getAttr(n, "action"))
 	if action == "" {
 		action = r.pageURL
+	} else if isJavaScriptURL(action) {
+		action = ""
 	} else {
 		action = r.resolveURL(action)
 	}
@@ -1175,6 +1204,9 @@ func (r *renderer) resolveURL(href string) string {
 	if href == "" {
 		return ""
 	}
+	if isJavaScriptURL(href) {
+		return ""
+	}
 	// Absolute URL.
 	if strings.HasPrefix(href, "http://") || strings.HasPrefix(href, "https://") || strings.HasPrefix(href, "mailto:") {
 		return href
@@ -1193,6 +1225,11 @@ func (r *renderer) resolveURL(href string) string {
 		return href
 	}
 	return base.ResolveReference(ref).String()
+}
+
+func isJavaScriptURL(raw string) bool {
+	v := strings.ToLower(strings.TrimSpace(raw))
+	return strings.HasPrefix(v, "javascript:")
 }
 
 // --- Helper functions ---

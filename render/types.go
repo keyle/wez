@@ -2,6 +2,7 @@ package render
 
 import (
 	"fmt"
+	"sort"
 	"strings"
 
 	"github.com/mattn/go-runewidth"
@@ -15,6 +16,13 @@ type SpanStyle struct {
 	Strike    bool
 	Color     string // color name from config, e.g. "blue"
 	BgColor   string
+}
+
+type focusTarget struct {
+	line int
+	col  int
+	kind int // 0=link, 1=control
+	idx  int
 }
 
 // Span is a run of text with uniform styling.
@@ -171,6 +179,82 @@ func (d *Document) PrevLink(fromLine, fromCol int) (idx, line, col int, ok bool)
 		return len(d.Links) - 1, l.Line, l.Col, true
 	}
 	return -1, 0, 0, false
+}
+
+// NextFocusable returns the next focusable link/control position after the cursor.
+func (d *Document) NextFocusable(fromLine, fromCol int) (line, col int, ok bool) {
+	targets := d.focusTargets()
+	if len(targets) == 0 {
+		return 0, 0, false
+	}
+
+	for _, t := range targets {
+		if t.line > fromLine || (t.line == fromLine && t.col > fromCol) {
+			return t.line, t.col, true
+		}
+	}
+	return targets[0].line, targets[0].col, true
+}
+
+// PrevFocusable returns the previous focusable link/control position before the cursor.
+func (d *Document) PrevFocusable(fromLine, fromCol int) (line, col int, ok bool) {
+	targets := d.focusTargets()
+	if len(targets) == 0 {
+		return 0, 0, false
+	}
+
+	for i := len(targets) - 1; i >= 0; i-- {
+		t := targets[i]
+		if t.line < fromLine || (t.line == fromLine && t.col < fromCol) {
+			return t.line, t.col, true
+		}
+	}
+	last := targets[len(targets)-1]
+	return last.line, last.col, true
+}
+
+func (d *Document) focusTargets() []focusTarget {
+	targets := make([]focusTarget, 0, len(d.Links)+len(d.Controls))
+
+	for i, link := range d.Links {
+		if link.Line < 0 || link.Line >= len(d.Lines) || link.Col < 0 {
+			continue
+		}
+		targets = append(targets, focusTarget{line: link.Line, col: link.Col, kind: 0, idx: i})
+	}
+
+	for i, c := range d.Controls {
+		if !isFocusableControl(c) {
+			continue
+		}
+		targets = append(targets, focusTarget{line: c.Line, col: c.Col, kind: 1, idx: i})
+	}
+
+	sort.Slice(targets, func(i, j int) bool {
+		a, b := targets[i], targets[j]
+		if a.line != b.line {
+			return a.line < b.line
+		}
+		if a.col != b.col {
+			return a.col < b.col
+		}
+		if a.kind != b.kind {
+			return a.kind < b.kind
+		}
+		return a.idx < b.idx
+	})
+
+	return targets
+}
+
+func isFocusableControl(c Control) bool {
+	if c.Line < 0 || c.Col < 0 || c.Width <= 0 || c.Disabled {
+		return false
+	}
+	if strings.EqualFold(c.Kind, "input") && strings.EqualFold(c.Type, "hidden") {
+		return false
+	}
+	return true
 }
 
 // ControlDisplayText returns a terminal-friendly display label for a form control.

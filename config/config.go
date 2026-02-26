@@ -57,12 +57,12 @@ func Default() Config {
 		Colors: ColorConfig{
 			Link:        "blue",
 			VisitedLink: "purple",
-			Heading:     "yellow",
-			Code:        "green",
-			Noscript:    "white",
-			NoscriptBg:  "red",
-			BlockQuote:  "gray",
-			Image:       "yellow",
+			Heading:     "darkyellow",
+			Code:        "orange",
+			Noscript:    "black",
+			NoscriptBg:  "gray",
+			BlockQuote:  "teal",
+			Image:       "green",
 			HRule:       "gray",
 			TopBar:      "black",
 			TopBarBg:    "white",
@@ -397,12 +397,12 @@ search_url_template = %q
 # Also supported: #RRGGBB, #RGB, and 256-color palette values like "color208"
 link        = "blue"
 visited_link = "purple"
-heading     = "yellow"
-code        = "green"
-noscript    = "white"
-noscript_bg = "red"
-blockquote  = "gray"
-image       = "yellow"
+heading     = "darkyellow"
+code        = "orange"
+noscript    = "black"
+noscript_bg = "gray"
+blockquote  = "teal"
+image       = "green"
 hrule       = "gray"
 top_bar     = "black"
 top_bar_bg  = "white"

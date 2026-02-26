@@ -47,6 +47,10 @@ const (
 	ActionYankURL     // yank selected text or current line
 	ActionYankLinkURL // yank href of link under cursor
 	ActionCommitFormInput
+	ActionOpenHistory
+	ActionClearCache
+	ActionClearHistory
+	ActionEscape
 	ActionOpenMailto // open mailto link under cursor
 )
 
@@ -382,8 +386,9 @@ func (u *UI) handleNormalKey(ev *tcell.EventKey) Action {
 		u.pendingSeq = ""
 		if u.isVisualMode() {
 			u.Mode = ModeNormal
+			return ActionNone
 		}
-		return ActionNone
+		return ActionEscape
 	}
 
 	keyStr := keymap.EventToKeyString(ev)
@@ -531,6 +536,15 @@ func (u *UI) executeAction(actionName string) Action {
 
 	case keymap.YankLinkURL:
 		return ActionYankLinkURL
+
+	case keymap.OpenHistory:
+		return ActionOpenHistory
+
+	case keymap.ClearCache:
+		return ActionClearCache
+
+	case keymap.ClearHistory:
+		return ActionClearHistory
 	}
 
 	u.clampCursor()
@@ -669,10 +683,10 @@ func (u *UI) moveCursor(deltaY int, minLine, maxLine int) {
 }
 
 func (u *UI) jumpToNextLink() {
-	if u.Doc == nil || len(u.Doc.Links) == 0 {
+	if u.Doc == nil {
 		return
 	}
-	_, line, col, ok := u.Doc.NextLink(u.CursorY, u.CursorX)
+	line, col, ok := u.Doc.NextFocusable(u.CursorY, u.CursorX)
 	if ok {
 		u.CursorY = line
 		u.CursorX = col
@@ -682,10 +696,10 @@ func (u *UI) jumpToNextLink() {
 }
 
 func (u *UI) jumpToPrevLink() {
-	if u.Doc == nil || len(u.Doc.Links) == 0 {
+	if u.Doc == nil {
 		return
 	}
-	_, line, col, ok := u.Doc.PrevLink(u.CursorY, u.CursorX)
+	line, col, ok := u.Doc.PrevFocusable(u.CursorY, u.CursorX)
 	if ok {
 		u.CursorY = line
 		u.CursorX = col
@@ -1379,6 +1393,8 @@ func (u *UI) spanStyle(span render.Span) tcell.Style {
 	switch span.Style.Color {
 	case "link":
 		style = style.Foreground(config.ParseColor(u.Cfg.Colors.Link))
+	case "visited_link":
+		style = style.Foreground(config.ParseColor(u.Cfg.Colors.VisitedLink))
 	case "heading":
 		style = style.Foreground(config.ParseColor(u.Cfg.Colors.Heading))
 	case "code":

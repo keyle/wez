@@ -162,3 +162,19 @@ func TestBuildFormSubmissionCheckboxRadioSelect(t *testing.T) {
 		t.Fatalf("expected selected option two, got %q", got)
 	}
 }
+
+func TestBuildFormSubmissionRejectsJavaScriptAction(t *testing.T) {
+	doc := &render.Document{
+		URL: "https://example.com/form",
+		Forms: []render.Form{{
+			Method:   "POST",
+			Action:   "javascript:void(0)",
+			Controls: []int{0},
+		}},
+		Controls: []render.Control{{Kind: "input", Type: "submit", FormIdx: 0, Name: "do", Value: "go"}},
+	}
+
+	if _, err := buildFormSubmission(doc, 0); err == nil {
+		t.Fatal("expected javascript action to be rejected")
+	}
+}

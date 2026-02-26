@@ -11,6 +11,7 @@ import (
 	"path"
 	"path/filepath"
 	"regexp"
+	"sort"
 	"strings"
 	"time"
 
@@ -44,12 +45,19 @@ type Browser struct {
 	UI      *ui.UI
 	Cfg     config.Config
 	History *history.History
+	Seen    *history.Seen
 	Fetcher *fetch.Client
 
 	// Navigation stacks.
 	backStack    []string
 	forwardStack []string
 	currentURL   string
+
+	historyViewActive  bool
+	historyViewPrevDoc *render.Document
+	historyViewScrollY int
+	historyViewCursorY int
+	historyViewCursorX int
 }
 
 // New creates a new Browser instance.
@@ -61,11 +69,14 @@ func New(cfg config.Config, km *keymap.Keymap) (*Browser, error) {
 
 	hist := history.New()
 	_ = hist.Load()
+	seen := history.NewSeen()
+	_ = seen.Load()
 
 	return &Browser{
 		UI:      tui,
 		Cfg:     cfg,
 		History: hist,
+		Seen:    seen,
 		Fetcher: fetch.NewClientWithOptions(fetch.ClientOptions{
 			PersistCookies:        cfg.PersistCookies,
 			CookieJarPath:         cfg.CookieJarPath,
@@ -76,6 +87,15 @@ func New(cfg config.Config, km *keymap.Keymap) (*Browser, error) {
 
 // Navigate fetches and renders a URL.
 func (b *Browser) Navigate(rawURL string) {
+	if b.historyViewActive {
+		b.historyViewActive = false
+		b.historyViewPrevDoc = nil
+	}
+	if isJavaScriptURL(rawURL) {
+		b.UI.SetStatus("Ignored javascript URL")
+		return
+	}
+
 	result, err := fetchWithMetaRedirects(rawURL, b.Cfg.FollowMetaRedirects, func(u string) (*fetch.Result, error) {
 		return b.fetchWithStatusAnimation(u, "Loading")
 	})
@@ -106,11 +126,14 @@ func (b *Browser) applyFetchResult(result *fetch.Result) {
 	}
 
 	w, _ := b.UI.Screen.Size()
+	if b.Seen != nil {
+		_ = b.Seen.Add(result.FinalURL)
+	}
 
 	var doc *render.Document
 	ct := strings.ToLower(result.ContentType)
 	if strings.Contains(ct, "text/html") || strings.Contains(ct, "application/xhtml") {
-		doc = render.Render(result.Body, result.FinalURL, w)
+		doc = render.RenderWithVisited(result.Body, result.FinalURL, w, b.isURLSeen)
 	} else {
 		doc = render.RenderPlainText(result.Body, result.FinalURL, w)
 	}
@@ -188,6 +211,11 @@ func (b *Browser) Run(initialURL string) {
 		switch action {
 		case ui.ActionQuit:
 			return
+
+		case ui.ActionEscape:
+			if b.historyViewActive {
+				b.exitHistoryView()
+			}
 
 		case ui.ActionNavigate:
 			url := strings.TrimSpace(b.UI.InputBuffer)
@@ -275,6 +303,15 @@ func (b *Browser) Run(initialURL string) {
 
 		case ui.ActionYankLinkURL:
 			b.UI.YankLinkURL()
+
+		case ui.ActionOpenHistory:
+			b.openHistoryView()
+
+		case ui.ActionClearCache:
+			b.clearCache()
+
+		case ui.ActionClearHistory:
+			b.clearHistory()
 		}
 	}
 }
@@ -288,6 +325,162 @@ func (b *Browser) Close() {
 			b.UI.SetStatus("cookie save error: " + err.Error())
 		}
 	}
+}
+
+func (b *Browser) isURLSeen(rawURL string) bool {
+	if b.Seen == nil {
+		return false
+	}
+	return b.Seen.Contains(rawURL)
+}
+
+func (b *Browser) newFetcher() *fetch.Client {
+	return fetch.NewClientWithOptions(fetch.ClientOptions{
+		PersistCookies:        b.Cfg.PersistCookies,
+		CookieJarPath:         b.Cfg.CookieJarPath,
+		PersistSessionCookies: b.Cfg.PersistSessionCookies,
+	})
+}
+
+func (b *Browser) openHistoryView() {
+	if b.historyViewActive {
+		return
+	}
+	b.historyViewActive = true
+	b.historyViewPrevDoc = b.UI.Doc
+	b.historyViewScrollY = b.UI.ScrollY
+	b.historyViewCursorY = b.UI.CursorY
+	b.historyViewCursorX = b.UI.CursorX
+
+	b.UI.SetDocument(b.buildHistoryDoc())
+	b.UI.SetStatus("History view (Esc to return)")
+}
+
+func (b *Browser) exitHistoryView() {
+	if !b.historyViewActive {
+		return
+	}
+	b.historyViewActive = false
+
+	if b.historyViewPrevDoc != nil {
+		b.UI.SetDocument(b.historyViewPrevDoc)
+		b.UI.ScrollY = b.historyViewScrollY
+		b.UI.CursorY = b.historyViewCursorY
+		b.UI.CursorX = b.historyViewCursorX
+	} else {
+		b.ShowWelcome()
+	}
+	b.UI.SetStatus("")
+}
+
+func (b *Browser) clearHistory() {
+	if b.History == nil {
+		b.History = history.New()
+	}
+	if err := b.History.Clear(); err != nil {
+		b.UI.SetStatus("History clear error: " + err.Error())
+		return
+	}
+	if b.historyViewActive {
+		b.UI.SetDocument(b.buildHistoryDoc())
+	}
+	b.UI.SetStatus("History cleared")
+}
+
+func (b *Browser) clearCache() {
+	if b.Fetcher != nil {
+		_ = b.Fetcher.Close()
+	}
+
+	cacheDir := config.CacheDir()
+	if err := os.RemoveAll(cacheDir); err != nil {
+		b.UI.SetStatus("Cache clear error: " + err.Error())
+		return
+	}
+	if err := os.MkdirAll(cacheDir, 0o755); err != nil {
+		b.UI.SetStatus("Cache init error: " + err.Error())
+		return
+	}
+
+	b.History = history.New()
+	_ = b.History.Load()
+	b.Seen = history.NewSeen()
+	_ = b.Seen.Load()
+	b.Fetcher = b.newFetcher()
+
+	if b.historyViewActive {
+		b.UI.SetDocument(b.buildHistoryDoc())
+	}
+	b.UI.SetStatus("Cache cleared")
+}
+
+func (b *Browser) buildHistoryDoc() *render.Document {
+	entries := b.History.Entries()
+	sort.Slice(entries, func(i, j int) bool {
+		return entries[i].Timestamp.After(entries[j].Timestamp)
+	})
+
+	lines := make([]render.Line, 0, len(entries)+8)
+	links := make([]render.Link, 0, len(entries))
+
+	lines = append(lines, render.Line{Spans: []render.Span{{
+		Text:    "History",
+		Style:   render.SpanStyle{Bold: true, Color: "heading"},
+		LinkIdx: -1,
+	}}})
+
+	if len(entries) == 0 {
+		lines = append(lines, render.Line{})
+		lines = append(lines, render.Line{Spans: []render.Span{{
+			Text:    "No history entries.",
+			LinkIdx: -1,
+		}}})
+		return &render.Document{Title: "History", URL: "about:history", Lines: lines, Links: links}
+	}
+
+	lines = append(lines, render.Line{})
+	currentDay := ""
+	for _, e := range entries {
+		day := e.Timestamp.Local().Format("2006-01-02 Monday")
+		if day != currentDay {
+			if currentDay != "" {
+				lines = append(lines, render.Line{})
+			}
+			currentDay = day
+			lines = append(lines, render.Line{Spans: []render.Span{{
+				Text:    day,
+				Style:   render.SpanStyle{Bold: true},
+				LinkIdx: -1,
+			}}})
+		}
+
+		timePart := e.Timestamp.Local().Format("15:04:05")
+		title := strings.TrimSpace(e.Title)
+		if title == "" {
+			title = e.URL
+		}
+		lineIdx := len(lines)
+		linkIdx := len(links)
+		linkCol := len(timePart) + 3
+		linkColor := "link"
+		if b.isURLSeen(e.URL) {
+			linkColor = "visited_link"
+		}
+
+		lines = append(lines, render.Line{Spans: []render.Span{
+			{Text: timePart + " - ", LinkIdx: -1},
+			{Text: title, LinkIdx: linkIdx, Style: render.SpanStyle{Underline: true, Color: linkColor}},
+		}})
+		lines = append(lines, render.Line{Spans: []render.Span{{Text: "    " + e.URL, LinkIdx: -1, Style: render.SpanStyle{Color: "code"}}}})
+		links = append(links, render.Link{URL: e.URL, Line: lineIdx, Col: linkCol})
+	}
+
+	return &render.Document{Title: "History", URL: "about:history", Lines: lines, Links: links}
+}
+
+func isJavaScriptURL(raw string) bool {
+	v := strings.ToLower(strings.TrimSpace(raw))
+	return strings.HasPrefix(v, "javascript:")
 }
 
 func (b *Browser) activateControl(controlIdx int) {
@@ -366,7 +559,7 @@ func (b *Browser) submitWithStatusAnimation(actionURL, method string, values url
 	}
 
 	if b.Fetcher == nil {
-		b.Fetcher = fetch.NewClient()
+		b.Fetcher = b.newFetcher()
 	}
 
 	ch := make(chan submitResult, 1)
@@ -449,7 +642,10 @@ func buildFormSubmission(doc *render.Document, submitControlIdx int) (formSubmis
 
 	actionURL := strings.TrimSpace(form.Action)
 	if actionURL == "" {
-		actionURL = doc.URL
+		return formSubmission{}, fmt.Errorf("unsupported form action")
+	}
+	if isJavaScriptURL(actionURL) {
+		return formSubmission{}, fmt.Errorf("unsupported javascript form action")
 	}
 
 	values := url.Values{}
@@ -539,7 +735,7 @@ func (b *Browser) fetchWithStatusAnimation(rawURL, label string) (*fetch.Result,
 	}
 
 	if b.Fetcher == nil {
-		b.Fetcher = fetch.NewClient()
+		b.Fetcher = b.newFetcher()
 	}
 
 	ch := make(chan fetchResult, 1)
@@ -1015,12 +1211,14 @@ func (b *Browser) ShowWelcome() {
 			{Spans: []render.Span{{Text: "  Ctrl-B      Page up", LinkIdx: -1}}},
 			{Spans: []render.Span{{Text: "  Ctrl-D/U    Half page down / up", LinkIdx: -1}}},
 			{Spans: []render.Span{{Text: "  Space       Page down", LinkIdx: -1}}},
-			{Spans: []render.Span{{Text: "  Tab / S-Tab Jump to next / previous link", LinkIdx: -1}}},
+			{Spans: []render.Span{{Text: "  Tab / S-Tab Jump to next / previous link/control", LinkIdx: -1}}},
 			{Spans: []render.Span{{Text: "  Enter       Activate link/form control under cursor", LinkIdx: -1}}},
 			{Spans: []render.Span{{Text: "              (edit fields, toggle checks, submit buttons)", LinkIdx: -1}}},
-			{Spans: []render.Span{{Text: "  b / B / H   Go back", LinkIdx: -1}}},
+			{Spans: []render.Span{{Text: "  b / B       Go back", LinkIdx: -1}}},
+			{Spans: []render.Span{{Text: "  H           Open history view (Esc to return)", LinkIdx: -1}}},
 			{Spans: []render.Span{{Text: "  L           Go forward", LinkIdx: -1}}},
 			{Spans: []render.Span{{Text: "  r / R       Reload page", LinkIdx: -1}}},
+			{Spans: []render.Span{{Text: "  zc / zh     Clear cache / clear history", LinkIdx: -1}}},
 			{Spans: []render.Span{{Text: "  /           Search in page", LinkIdx: -1}}},
 			{Spans: []render.Span{{Text: "  Ctrl-o      Search web", LinkIdx: -1}}},
 			{Spans: []render.Span{{Text: "  n / N       Next / previous search match", LinkIdx: -1}}},
