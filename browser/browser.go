@@ -59,6 +59,8 @@ type Browser struct {
 	backStack    []string
 	forwardStack []string
 	currentURL   string
+	sourceURL    string
+	sourceBody   string
 
 	viewActive  bool
 	viewKind    string
@@ -152,6 +154,8 @@ func (b *Browser) navigateInternalPage(targetURL string, renderFn func()) {
 
 func (b *Browser) applyFetchResult(result *fetch.Result) {
 	if shouldDownload(result.ContentType) {
+		b.sourceURL = ""
+		b.sourceBody = ""
 		savedPath, saveErr := b.saveDownload(result)
 		if saveErr != nil {
 			b.showError(fmt.Sprintf("download failed: %v", saveErr))
@@ -181,6 +185,9 @@ func (b *Browser) applyFetchResult(result *fetch.Result) {
 	} else {
 		doc = render.RenderPlainText(result.Body, result.FinalURL, w)
 	}
+
+	b.sourceURL = result.FinalURL
+	b.sourceBody = normalizeSourceBody(result.Body)
 
 	// Update navigation state.
 	if b.currentURL != "" {
@@ -363,6 +370,9 @@ func (b *Browser) Run(initialURL string) {
 		case ui.ActionOpenFavorites:
 			b.openFavoritesView()
 
+		case ui.ActionShowSource:
+			b.openSourceView()
+
 		case ui.ActionClearCache:
 			b.clearCache()
 
@@ -410,6 +420,27 @@ func (b *Browser) openFavoritesView() {
 
 	b.UI.SetDocument(b.buildFavoritesDoc())
 	b.UI.SetStatus("Bookmarks view (Esc to return)")
+}
+
+func (b *Browser) openSourceView() {
+	if b.UI.Doc == nil {
+		b.UI.SetStatus("No source available")
+		return
+	}
+
+	docURL := strings.TrimSpace(b.UI.Doc.URL)
+	if docURL == "" || strings.HasPrefix(strings.ToLower(docURL), "about:") {
+		b.UI.SetStatus("No source available for this page")
+		return
+	}
+	if b.sourceURL == "" || b.sourceBody == "" || b.sourceURL != docURL {
+		b.UI.SetStatus("No source available for this page")
+		return
+	}
+
+	b.enterAuxView("source")
+	b.UI.SetDocument(b.buildSourceDoc())
+	b.UI.SetStatus("Source view (Esc to return)")
 }
 
 func (b *Browser) enterAuxView(kind string) {
@@ -551,6 +582,8 @@ func (b *Browser) clearCache() {
 	_ = b.History.Load()
 	b.Seen = history.NewSeen()
 	_ = b.Seen.Load()
+	b.sourceURL = ""
+	b.sourceBody = ""
 	b.Fetcher = b.newFetcher()
 
 	if b.viewActive && b.viewKind == "history" {
@@ -723,6 +756,31 @@ func (b *Browser) buildFavoritesDoc() *render.Document {
 	return &render.Document{Title: "Bookmarks", URL: aboutBookmarksURL, Lines: lines, Links: links}
 }
 
+func (b *Browser) buildSourceDoc() *render.Document {
+	width := 80
+	if b != nil && b.UI != nil && b.UI.Screen != nil {
+		if w, _ := b.UI.Screen.Size(); w > 0 {
+			width = w
+		}
+	}
+
+	bodyDoc := render.RenderPlainText([]byte(b.sourceBody), "about:source-body", width)
+
+	lines := make([]render.Line, 0, 64)
+	lines = append(lines, render.Line{Spans: []render.Span{{
+		Text:    "Source",
+		Style:   render.SpanStyle{Bold: true, Color: "heading"},
+		LinkIdx: -1,
+	}}})
+	if strings.TrimSpace(b.sourceURL) != "" {
+		lines = append(lines, render.Line{Spans: []render.Span{{Text: b.sourceURL, Style: render.SpanStyle{Color: "code"}, LinkIdx: -1}}})
+	}
+	lines = append(lines, render.Line{})
+	lines = append(lines, bodyDoc.Lines...)
+
+	return &render.Document{Title: "Source", URL: "about:source", Lines: lines}
+}
+
 func (b *Browser) favoriteRemoveHint() string {
 	keys := []string{"zd"}
 	if b != nil && b.UI != nil && b.UI.Keymap != nil {
@@ -736,6 +794,13 @@ func (b *Browser) favoriteRemoveHint() string {
 func isJavaScriptURL(raw string) bool {
 	v := strings.ToLower(strings.TrimSpace(raw))
 	return strings.HasPrefix(v, "javascript:")
+}
+
+func normalizeSourceBody(body []byte) string {
+	s := string(body)
+	s = strings.ReplaceAll(s, "\r\n", "\n")
+	s = strings.ReplaceAll(s, "\r", "\n")
+	return s
 }
 
 func isAboutWelcomeURL(raw string) bool {
@@ -1473,7 +1538,7 @@ func (b *Browser) ShowWelcome() {
 		{Spans: []render.Span{{Text: "  gg / G      Go to top / bottom", LinkIdx: -1}}},
 		{Spans: []render.Span{{Text: "  Ctrl-F      Page down", LinkIdx: -1}}},
 		{Spans: []render.Span{{Text: "  PgUp        Page up", LinkIdx: -1}}},
-		{Spans: []render.Span{{Text: "  Ctrl-D/U    Half page down / up", LinkIdx: -1}}},
+		{Spans: []render.Span{{Text: "  d / u       Half page down / up", LinkIdx: -1}}},
 		{Spans: []render.Span{{Text: "  Space       Page down", LinkIdx: -1}}},
 		{Spans: []render.Span{{Text: "  Tab / S-Tab Jump to next / previous link/control", LinkIdx: -1}}},
 		{Spans: []render.Span{{Text: "  Enter       Activate link/form control under cursor", LinkIdx: -1}}},
@@ -1482,6 +1547,7 @@ func (b *Browser) ShowWelcome() {
 		{Spans: []render.Span{{Text: "  Ctrl-W      Open welcome page", LinkIdx: -1}}},
 		{Spans: []render.Span{{Text: "  Ctrl-H      Open history view (Esc to return)", LinkIdx: -1}}},
 		{Spans: []render.Span{{Text: "  Ctrl-B      Open bookmarks view (Esc to return)", LinkIdx: -1}}},
+		{Spans: []render.Span{{Text: "  Ctrl-U      Show page source (Esc to return)", LinkIdx: -1}}},
 		{Spans: []render.Span{{Text: "  L           Go forward", LinkIdx: -1}}},
 		{Spans: []render.Span{{Text: "  r / R       Reload page", LinkIdx: -1}}},
 		{Spans: []render.Span{{Text: "  za / zd     Add / remove favorite", LinkIdx: -1}}},

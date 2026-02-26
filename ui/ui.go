@@ -53,6 +53,7 @@ const (
 	ActionRemoveFavorite
 	ActionOpenHistory
 	ActionOpenFavorites
+	ActionShowSource
 	ActionClearCache
 	ActionClearHistory
 	ActionEscape
@@ -552,6 +553,9 @@ func (u *UI) executeAction(actionName string) Action {
 
 	case keymap.OpenFavorites:
 		return ActionOpenFavorites
+
+	case keymap.ShowSource:
+		return ActionShowSource
 
 	case keymap.AddFavorite:
 		if u.isNonFavoritableView() {

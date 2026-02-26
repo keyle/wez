@@ -44,6 +44,7 @@ const (
 	OpenFavorites  = "open_favorites_view"
 	AddFavorite    = "add_favorite"
 	RemoveFavorite = "remove_favorite"
+	ShowSource     = "show_source"
 	ClearCache     = "clear_cache"
 	ClearHistory   = "clear_history"
 	OpenMailto     = "open_mailto"
@@ -68,14 +69,15 @@ func DefaultBindings() map[string][]string {
 		CursorRight:    {"l", "Right"},
 		PageDown:       {"Ctrl-F", "PgDn", "Space"},
 		PageUp:         {"PgUp"},
-		HalfPageDown:   {"Ctrl-D"},
-		HalfPageUp:     {"Ctrl-U"},
+		HalfPageDown:   {"d"},
+		HalfPageUp:     {"u"},
 		GoTop:          {"gg"},
 		GoBottom:       {"G"},
 		Back:           {"b", "B", "Backspace"},
 		OpenHistory:    {"Ctrl-H"},
 		OpenFavorites:  {"Ctrl-B"},
 		OpenWelcome:    {"Ctrl-W"},
+		ShowSource:     {"Ctrl-U"},
 		Forward:        {"L"},
 		OpenURL:        {"o"},
 		OpenURLEdit:    {"O"},
@@ -307,14 +309,15 @@ cursor_left    = ["h", "Left"]
 cursor_right   = ["l", "Right"]
 page_down      = ["Ctrl-F", "PgDn", "Space"]
 page_up        = ["PgUp"]
-half_page_down = ["Ctrl-D"]
-half_page_up   = ["Ctrl-U"]
+half_page_down = ["d"]
+half_page_up   = ["u"]
 go_top         = ["gg"]
 go_bottom      = ["G"]
 back           = ["b", "B", "Backspace"]
 open_history_view = ["Ctrl-H"]
 open_favorites_view = ["Ctrl-B"]
 open_welcome   = ["Ctrl-W"]
+show_source    = ["Ctrl-U"]
 forward        = ["L"]
 open_url       = ["o"]
 open_url_edit  = ["O"]

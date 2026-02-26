@@ -104,13 +104,14 @@ Default normal-mode bindings (subset):
 - `h` / `l` - move cursor left / right
 - `gg` / `G` - jump top / bottom
 - `Ctrl-F` / `PgUp` - page down / up
-- `Ctrl-D` / `Ctrl-U` - half-page down / up
+- `d` / `u` - half-page down / up
 - `Tab` / `Shift-Tab` - next / previous focus target (link or form control)
 - `Enter` - activate link/control under cursor
 - `b` / `B` / `Backspace` - back
 - `Ctrl-W` - open welcome page
 - `Ctrl-H` - open history view (Esc to return)
 - `Ctrl-B` - open bookmarks view (Esc to return)
+- `Ctrl-U` - show page source (Esc to return)
 - `L` - forward
 - `r` / `R` - reload
 - `za` / `zd` - add / remove favorite
