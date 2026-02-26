@@ -1465,8 +1465,7 @@ func (b *Browser) ShowWelcome() {
 		Title: "",
 		URL:   aboutWelcomeURL,
 		Lines: []render.Line{
-			{Spans: []render.Span{{Text: "wez " + config.Version, Style: render.SpanStyle{Bold: true, Color: "heading"}, LinkIdx: -1}}},
-			{Spans: []render.Span{{Text: "A terminal web browser", LinkIdx: -1}}},
+			{Spans: []render.Span{{Text: "  wez " + config.Version, Style: render.SpanStyle{Bold: true, Color: "heading"}, LinkIdx: -1}}},
 			{},
 			{Spans: []render.Span{{Text: "Keybindings:", Style: render.SpanStyle{Bold: true}, LinkIdx: -1}}},
 			{},
