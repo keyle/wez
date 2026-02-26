@@ -10,11 +10,10 @@ It aims to be fast and readable in a text UI, with practical browsing features a
 - vim-like bindings, search, link/form activation, and key remapping
 - downloads for binary responses
 - history view
-- cache-ish, visited links
-- persistent cookies by default (`~/.cache/wez/cookies.json`)
+- cache, persistent cookies, visited links
 - no JavaScript runtime
 - form handling, basic
-- yanking, v/V visual support, mouse support
+- yanking (copy), v/V visual support, mouse support
 - images preview with external tool support, e.g. `viu`
 
 ## Build
@@ -40,11 +39,13 @@ these files are auto created on first start.
 - keymap: `~/.config/wez/keymap.toml`
 - cache: `~/.cache/wez/`
 
+the config and keymap files are self-documentating, if not, let me know.
+
 ## Method
 
 Much of this repo was built using agentic coding, with `Opencode`. First pass with `Opus 4.6` on `high`, then `Codex 5.3` on `high/xhigh`. 
 
-I could hand-write it all but it does it faster than me and never gets tired. I _do_ read and take ownership of the code. If you see slop, it's my fault!
+I could hand-write it all but it does it much faster than me and never gets tired. I _do_ read and take ownership of the code. If you see slop, it's my fault!
 
 ## License
 
