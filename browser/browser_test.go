@@ -190,3 +190,27 @@ func TestIsAboutWelcomeURL(t *testing.T) {
 		t.Fatal("did not expect about:history to match")
 	}
 }
+
+func TestIsAboutHistoryURL(t *testing.T) {
+	if !isAboutHistoryURL("about:history") {
+		t.Fatal("expected about:history to match")
+	}
+	if !isAboutHistoryURL(" ABOUT:HISTORY ") {
+		t.Fatal("expected case/space variant to match")
+	}
+	if isAboutHistoryURL("about:bookmarks") {
+		t.Fatal("did not expect about:bookmarks to match history")
+	}
+}
+
+func TestIsAboutBookmarksURL(t *testing.T) {
+	if !isAboutBookmarksURL("about:bookmarks") {
+		t.Fatal("expected about:bookmarks to match")
+	}
+	if !isAboutBookmarksURL(" ABOUT:BOOKMARKS ") {
+		t.Fatal("expected case/space variant to match")
+	}
+	if isAboutBookmarksURL("about:favorites") {
+		t.Fatal("did not expect legacy about:favorites to match")
+	}
+}

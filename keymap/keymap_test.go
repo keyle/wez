@@ -15,7 +15,7 @@ func TestDefaultBindings(t *testing.T) {
 	required := []string{
 		Quit, ScrollDown, ScrollUp, CursorLeft, CursorRight,
 		PageDown, PageUp, HalfPageDown, HalfPageUp,
-		GoTop, GoBottom, Back, Forward,
+		GoTop, GoBottom, Back, Forward, OpenWelcome,
 		OpenURL, OpenURLEdit, FollowLink, NextLink, PrevLink,
 		Search, SearchWeb, SearchNext, SearchPrev, Reload, OpenImage, YankURL, YankLinkURL,
 		VisualMode, VisualLine, OpenHistory, OpenFavorites, AddFavorite, RemoveFavorite, ClearCache, ClearHistory,
@@ -193,6 +193,12 @@ func TestSpecialKeyBindings(t *testing.T) {
 	action, _ = km.Resolve("", "Ctrl-B")
 	if action != OpenFavorites {
 		t.Errorf("expected Ctrl-B -> open_favorites_view, got %q", action)
+	}
+
+	// Ctrl-W -> open_welcome.
+	action, _ = km.Resolve("", "Ctrl-W")
+	if action != OpenWelcome {
+		t.Errorf("expected Ctrl-W -> open_welcome, got %q", action)
 	}
 
 	// za -> add_favorite.

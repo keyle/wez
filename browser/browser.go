@@ -36,6 +36,8 @@ var (
 const (
 	maxMetaRedirectHops = 8
 	aboutWelcomeURL     = "about:welcome"
+	aboutHistoryURL     = "about:history"
+	aboutBookmarksURL   = "about:bookmarks"
 )
 
 type formSubmission struct {
@@ -97,13 +99,19 @@ func New(cfg config.Config, km *keymap.Keymap) (*Browser, error) {
 // Navigate fetches and renders a URL.
 func (b *Browser) Navigate(rawURL string) {
 	if isAboutWelcomeURL(rawURL) {
-		if b.currentURL != "" && b.currentURL != aboutWelcomeURL {
-			b.backStack = append(b.backStack, b.currentURL)
-		}
-		b.forwardStack = nil
-		b.currentURL = aboutWelcomeURL
-		b.ShowWelcome()
-		b.UI.SetStatus("")
+		b.navigateInternalPage(aboutWelcomeURL, b.ShowWelcome)
+		return
+	}
+	if isAboutHistoryURL(rawURL) {
+		b.navigateInternalPage(aboutHistoryURL, func() {
+			b.UI.SetDocument(b.buildHistoryDoc())
+		})
+		return
+	}
+	if isAboutBookmarksURL(rawURL) {
+		b.navigateInternalPage(aboutBookmarksURL, func() {
+			b.UI.SetDocument(b.buildFavoritesDoc())
+		})
 		return
 	}
 
@@ -125,6 +133,21 @@ func (b *Browser) Navigate(rawURL string) {
 		return
 	}
 	b.applyFetchResult(result)
+}
+
+func (b *Browser) navigateInternalPage(targetURL string, renderFn func()) {
+	if b.viewActive {
+		b.viewActive = false
+		b.viewKind = ""
+		b.viewPrevDoc = nil
+	}
+	if b.currentURL != "" && b.currentURL != targetURL {
+		b.backStack = append(b.backStack, b.currentURL)
+	}
+	b.forwardStack = nil
+	b.currentURL = targetURL
+	renderFn()
+	b.UI.SetStatus("")
 }
 
 func (b *Browser) applyFetchResult(result *fetch.Result) {
@@ -292,6 +315,9 @@ func (b *Browser) Run(initialURL string) {
 				b.UI.SetStatus("No next page")
 			}
 
+		case ui.ActionOpenWelcome:
+			b.Navigate(aboutWelcomeURL)
+
 		case ui.ActionReload:
 			if b.currentURL != "" {
 				url := b.currentURL
@@ -383,7 +409,7 @@ func (b *Browser) openFavoritesView() {
 	b.enterAuxView("favorites")
 
 	b.UI.SetDocument(b.buildFavoritesDoc())
-	b.UI.SetStatus("Favorites view (Esc to return)")
+	b.UI.SetStatus("Bookmarks view (Esc to return)")
 }
 
 func (b *Browser) enterAuxView(kind string) {
@@ -559,7 +585,7 @@ func (b *Browser) buildHistoryDoc() *render.Document {
 		lines = append(lines, render.Line{})
 		lines = append(lines, render.Line{Spans: []render.Span{{Text: clearHint, LinkIdx: -1, Style: render.SpanStyle{Color: "code"}}}})
 		lines = append(lines, render.Line{Spans: []render.Span{{Text: cacheHint, LinkIdx: -1, Style: render.SpanStyle{Color: "code"}}}})
-		return &render.Document{Title: "History", URL: "about:history", Lines: lines, Links: links}
+		return &render.Document{Title: "History", URL: aboutHistoryURL, Lines: lines, Links: links}
 	}
 
 	lines = append(lines, render.Line{})
@@ -603,7 +629,7 @@ func (b *Browser) buildHistoryDoc() *render.Document {
 	lines = append(lines, render.Line{Spans: []render.Span{{Text: clearHint, LinkIdx: -1, Style: render.SpanStyle{Color: "code"}}}})
 	lines = append(lines, render.Line{Spans: []render.Span{{Text: cacheHint, LinkIdx: -1, Style: render.SpanStyle{Color: "code"}}}})
 
-	return &render.Document{Title: "History", URL: "about:history", Lines: lines, Links: links}
+	return &render.Document{Title: "History", URL: aboutHistoryURL, Lines: lines, Links: links}
 }
 
 func (b *Browser) historyClearHint() string {
@@ -647,7 +673,7 @@ func (b *Browser) buildFavoritesDoc() *render.Document {
 	removeHint := b.favoriteRemoveHint()
 
 	lines = append(lines, render.Line{Spans: []render.Span{{
-		Text:    "Favorites",
+		Text:    "Bookmarks",
 		Style:   render.SpanStyle{Bold: true, Color: "heading"},
 		LinkIdx: -1,
 	}}})
@@ -657,7 +683,7 @@ func (b *Browser) buildFavoritesDoc() *render.Document {
 		lines = append(lines, render.Line{Spans: []render.Span{{Text: "No favorites yet. Use za to add one.", LinkIdx: -1}}})
 		lines = append(lines, render.Line{})
 		lines = append(lines, render.Line{Spans: []render.Span{{Text: removeHint, LinkIdx: -1, Style: render.SpanStyle{Color: "code"}}}})
-		return &render.Document{Title: "Favorites", URL: "about:favorites", Lines: lines, Links: links}
+		return &render.Document{Title: "Bookmarks", URL: aboutBookmarksURL, Lines: lines, Links: links}
 	}
 
 	lines = append(lines, render.Line{})
@@ -694,7 +720,7 @@ func (b *Browser) buildFavoritesDoc() *render.Document {
 	lines = append(lines, render.Line{})
 	lines = append(lines, render.Line{Spans: []render.Span{{Text: removeHint, LinkIdx: -1, Style: render.SpanStyle{Color: "code"}}}})
 
-	return &render.Document{Title: "Favorites", URL: "about:favorites", Lines: lines, Links: links}
+	return &render.Document{Title: "Bookmarks", URL: aboutBookmarksURL, Lines: lines, Links: links}
 }
 
 func (b *Browser) favoriteRemoveHint() string {
@@ -714,6 +740,14 @@ func isJavaScriptURL(raw string) bool {
 
 func isAboutWelcomeURL(raw string) bool {
 	return strings.EqualFold(strings.TrimSpace(raw), aboutWelcomeURL)
+}
+
+func isAboutHistoryURL(raw string) bool {
+	return strings.EqualFold(strings.TrimSpace(raw), aboutHistoryURL)
+}
+
+func isAboutBookmarksURL(raw string) bool {
+	return strings.EqualFold(strings.TrimSpace(raw), aboutBookmarksURL)
 }
 
 func (b *Browser) activateControl(controlIdx int) {
@@ -1448,8 +1482,9 @@ func (b *Browser) ShowWelcome() {
 			{Spans: []render.Span{{Text: "  Enter       Activate link/form control under cursor", LinkIdx: -1}}},
 			{Spans: []render.Span{{Text: "              (edit fields, toggle checks, submit buttons)", LinkIdx: -1}}},
 			{Spans: []render.Span{{Text: "  b / B       Go back", LinkIdx: -1}}},
+			{Spans: []render.Span{{Text: "  Ctrl-W      Open welcome page", LinkIdx: -1}}},
 			{Spans: []render.Span{{Text: "  Ctrl-H      Open history view (Esc to return)", LinkIdx: -1}}},
-			{Spans: []render.Span{{Text: "  Ctrl-B      Open favorites view (Esc to return)", LinkIdx: -1}}},
+			{Spans: []render.Span{{Text: "  Ctrl-B      Open bookmarks view (Esc to return)", LinkIdx: -1}}},
 			{Spans: []render.Span{{Text: "  L           Go forward", LinkIdx: -1}}},
 			{Spans: []render.Span{{Text: "  r / R       Reload page", LinkIdx: -1}}},
 			{Spans: []render.Span{{Text: "  za / zd     Add / remove favorite", LinkIdx: -1}}},

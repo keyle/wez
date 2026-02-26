@@ -24,6 +24,7 @@ const (
 	GoBottom       = "go_bottom"
 	Back           = "back"
 	Forward        = "forward"
+	OpenWelcome    = "open_welcome"
 	OpenURL        = "open_url"
 	OpenURLEdit    = "open_url_edit"
 	FollowLink     = "follow_link"
@@ -74,6 +75,7 @@ func DefaultBindings() map[string][]string {
 		Back:           {"b", "B", "Backspace"},
 		OpenHistory:    {"Ctrl-H"},
 		OpenFavorites:  {"Ctrl-B"},
+		OpenWelcome:    {"Ctrl-W"},
 		Forward:        {"L"},
 		OpenURL:        {"o"},
 		OpenURLEdit:    {"O"},
@@ -312,6 +314,7 @@ go_bottom      = ["G"]
 back           = ["b", "B", "Backspace"]
 open_history_view = ["Ctrl-H"]
 open_favorites_view = ["Ctrl-B"]
+open_welcome   = ["Ctrl-W"]
 forward        = ["L"]
 open_url       = ["o"]
 open_url_edit  = ["O"]

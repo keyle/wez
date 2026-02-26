@@ -39,6 +39,7 @@ const (
 	ActionFollowLink // follow link under cursor
 	ActionBack
 	ActionForward
+	ActionOpenWelcome
 	ActionReload
 	ActionOpenImage // open image under cursor
 	ActionSearch    // search for InputBuffer
@@ -481,6 +482,9 @@ func (u *UI) executeAction(actionName string) Action {
 	case keymap.Forward:
 		return ActionForward
 
+	case keymap.OpenWelcome:
+		return ActionOpenWelcome
+
 	case keymap.OpenURL:
 		u.Mode = ModeURLInput
 		u.InputPrompt = "URL: "
@@ -781,7 +785,7 @@ func (u *UI) isNonFavoritableView() bool {
 		return false
 	}
 	v := strings.ToLower(strings.TrimSpace(u.Doc.URL))
-	return v == "about:history" || v == "about:favorites"
+	return v == "about:history" || v == "about:bookmarks"
 }
 
 func (u *UI) startVisual(lineWise bool) {

@@ -108,8 +108,9 @@ Default normal-mode bindings (subset):
 - `Tab` / `Shift-Tab` - next / previous focus target (link or form control)
 - `Enter` - activate link/control under cursor
 - `b` / `B` / `Backspace` - back
+- `Ctrl-W` - open welcome page
 - `Ctrl-H` - open history view (Esc to return)
-- `Ctrl-B` - open favorites view (Esc to return)
+- `Ctrl-B` - open bookmarks view (Esc to return)
 - `L` - forward
 - `r` / `R` - reload
 - `za` / `zd` - add / remove favorite
