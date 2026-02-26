@@ -230,6 +230,52 @@ func TestRenderTableSoftWrap(t *testing.T) {
 	}
 }
 
+func TestHNCommentIndentCellRendersThreadIndent(t *testing.T) {
+	html := `<html><body><table><tr><td class="ind" indent="2"><img src="s.gif" height="1" width="80"></td><td class="votelinks"></td><td class="default">child comment</td></tr></table></body></html>`
+	doc := Render([]byte(html), "https://news.ycombinator.com/item?id=1", 120)
+
+	text := docText(doc)
+	if strings.Contains(text, "[IMG]") {
+		t.Fatalf("expected indent cell image to be suppressed, got: %q", text)
+	}
+
+	var found bool
+	for _, line := range doc.Lines {
+		lt := lineToText(line)
+		if strings.Contains(lt, "child comment") {
+			found = true
+			if !strings.HasPrefix(lt, "        ") {
+				t.Fatalf("expected threaded indentation prefix, got line: %q", lt)
+			}
+		}
+	}
+	if !found {
+		t.Fatalf("expected child comment line, got: %q", text)
+	}
+}
+
+func TestHNCommentIndentAppliesToWrappedBodyAndReply(t *testing.T) {
+	html := `<html><body><table><tr><td class="ind" indent="2"><img src="s.gif" height="1" width="80"></td><td class="default"><div class="comment"><div class="commtext c00">This is a deeply indented comment body that should wrap across multiple lines in a narrow viewport.</div><div class="reply"><a href="/reply?id=1">reply</a></div></div></td></tr></table></body></html>`
+	doc := Render([]byte(html), "https://news.ycombinator.com/item?id=1", 44)
+
+	hasReply := false
+	for _, line := range doc.Lines {
+		lt := lineToText(line)
+		if strings.TrimSpace(lt) == "" {
+			continue
+		}
+		if !strings.HasPrefix(lt, "        ") {
+			t.Fatalf("expected all comment lines indented by thread level, got: %q", lt)
+		}
+		if strings.Contains(lt, "reply") {
+			hasReply = true
+		}
+	}
+	if !hasReply {
+		t.Fatalf("expected reply line in output, got: %q", docText(doc))
+	}
+}
+
 func TestTableLinkDoesNotStartWithSpace(t *testing.T) {
 	html := `<html><body><table><tr><td>1.</td><td> <a href="/user">alice</a></td><td> <a href="/item">42 comments</a></td></tr></table></body></html>`
 	doc := Render([]byte(html), "https://news.ycombinator.com", 120)

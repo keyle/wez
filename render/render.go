@@ -158,7 +158,9 @@ type renderer struct {
 	listStack []listCtx
 
 	// Table row context (number of cells rendered in current row)
-	tableRowCells []int
+	tableRowCells  []int
+	hnRowIndent    int
+	hnRowHasIndent bool
 
 	// Page URL for resolving relative links.
 	pageURL string
@@ -596,9 +598,13 @@ func (r *renderer) handleElement(n *html.Node) {
 
 	case atom.Tr:
 		r.flushLine()
+		r.hnRowIndent = 0
+		r.hnRowHasIndent = false
 		r.tableRowCells = append(r.tableRowCells, 0)
 		r.walkChildren(n)
 		r.tableRowCells = r.tableRowCells[:len(r.tableRowCells)-1]
+		r.hnRowIndent = 0
+		r.hnRowHasIndent = false
 		r.flushLine()
 
 	case atom.Td, atom.Th:
@@ -609,7 +615,29 @@ func (r *renderer) handleElement(n *html.Node) {
 			}
 			r.tableRowCells[i]++
 		}
+
+		extraIndent := 0
+		if tag == atom.Td {
+			if level, ok := hnIndentLevel(n); ok {
+				r.hnRowHasIndent = true
+				r.hnRowIndent = level * 4
+				if r.hnRowIndent > 0 {
+					r.appendToLine(strings.Repeat(" ", r.hnRowIndent))
+				}
+				return
+			}
+			if r.hnRowHasIndent && r.hnRowIndent > 0 {
+				extraIndent = r.hnRowIndent
+			}
+		}
+
+		oldIndent := r.indent
+		if extraIndent > 0 {
+			r.indent += extraIndent
+		}
+
 		r.pendingSpace = false
+		oldSuppressLeadingSpace := r.suppressLeadingSpace
 		r.suppressLeadingSpace = true
 		if tag == atom.Th {
 			oldBold := r.bold
@@ -619,7 +647,8 @@ func (r *renderer) handleElement(n *html.Node) {
 		} else {
 			r.walkChildren(n)
 		}
-		r.suppressLeadingSpace = false
+		r.suppressLeadingSpace = oldSuppressLeadingSpace
+		r.indent = oldIndent
 
 	case atom.Img:
 		r.handleImage(n)
@@ -1307,6 +1336,31 @@ func parsePositiveInt(s string, fallback int) int {
 		return fallback
 	}
 	return n
+}
+
+func hnIndentLevel(td *html.Node) (int, bool) {
+	if td == nil || td.DataAtom != atom.Td {
+		return 0, false
+	}
+
+	classAttr := strings.ToLower(strings.TrimSpace(getAttr(td, "class")))
+	if classAttr == "" {
+		return 0, false
+	}
+	fields := strings.Fields(classAttr)
+	isInd := false
+	for _, f := range fields {
+		if f == "ind" {
+			isInd = true
+			break
+		}
+	}
+	if !isInd {
+		return 0, false
+	}
+
+	level := parsePositiveInt(getAttr(td, "indent"), 0)
+	return level, true
 }
 
 func collectSelectOptions(selectNode *html.Node) []ControlOption {
