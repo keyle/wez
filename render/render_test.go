@@ -183,6 +183,19 @@ func TestRenderTableSoftWrap(t *testing.T) {
 	}
 }
 
+func TestTableLinkDoesNotStartWithSpace(t *testing.T) {
+	html := `<html><body><table><tr><td>1.</td><td> <a href="/user">alice</a></td><td> <a href="/item">42 comments</a></td></tr></table></body></html>`
+	doc := Render([]byte(html), "https://news.ycombinator.com", 120)
+
+	for _, line := range doc.Lines {
+		for _, span := range line.Spans {
+			if span.LinkIdx >= 0 && strings.HasPrefix(span.Text, " ") {
+				t.Fatalf("link span should not start with whitespace: %q", span.Text)
+			}
+		}
+	}
+}
+
 func TestRenderHR(t *testing.T) {
 	html := `<html><body><p>Above</p><hr><p>Below</p></body></html>`
 	doc := Render([]byte(html), "http://example.com", 80)

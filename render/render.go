@@ -121,8 +121,9 @@ type renderer struct {
 	indent int
 
 	// Whitespace
-	pendingSpace bool
-	preformatted bool
+	pendingSpace         bool
+	preformatted         bool
+	suppressLeadingSpace bool
 
 	// Style context
 	bold      bool
@@ -216,7 +217,7 @@ func (r *renderer) addText(text string) {
 	words := strings.Fields(text)
 	if len(words) == 0 {
 		// All whitespace.
-		if hasLeadingSpace && r.curCol > r.indent {
+		if hasLeadingSpace && r.curCol > r.indent && !r.suppressLeadingSpace {
 			r.pendingSpace = true
 		}
 		return
@@ -225,7 +226,9 @@ func (r *renderer) addText(text string) {
 	for i, word := range words {
 		needSpace := false
 		if i == 0 {
-			needSpace = (hasLeadingSpace || r.pendingSpace) && r.curCol > r.indent
+			if !r.suppressLeadingSpace {
+				needSpace = (hasLeadingSpace || r.pendingSpace) && r.curCol > r.indent
+			}
 		} else {
 			needSpace = true
 		}
@@ -257,6 +260,7 @@ func (r *renderer) addText(text string) {
 		} else {
 			r.appendToLine(word)
 		}
+		r.suppressLeadingSpace = false
 	}
 
 	r.pendingSpace = hasTrailingSpace
@@ -489,6 +493,8 @@ func (r *renderer) handleElement(n *html.Node) {
 			}
 			r.tableRowCells[i]++
 		}
+		r.pendingSpace = false
+		r.suppressLeadingSpace = true
 		if tag == atom.Th {
 			oldBold := r.bold
 			r.bold = true
@@ -497,6 +503,7 @@ func (r *renderer) handleElement(n *html.Node) {
 		} else {
 			r.walkChildren(n)
 		}
+		r.suppressLeadingSpace = false
 
 	case atom.Img:
 		r.handleImage(n)

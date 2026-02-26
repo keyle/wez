@@ -752,6 +752,17 @@ func (u *UI) selectionBounds() (startLine, startCol, endLine, endCol int) {
 func (u *UI) handleMouseEvent(ev *tcell.EventMouse) {
 	x, y := ev.Position()
 	_, h := u.Screen.Size()
+	buttons := ev.Buttons()
+
+	if buttons&tcell.WheelUp != 0 {
+		u.scroll(-3)
+		return
+	}
+	if buttons&tcell.WheelDown != 0 {
+		u.scroll(3)
+		return
+	}
+
 	if y < 0 || y >= h-1 {
 		if ev.Buttons() == tcell.ButtonNone {
 			u.mouseSelecting = false
@@ -769,27 +780,22 @@ func (u *UI) handleMouseEvent(ev *tcell.EventMouse) {
 		}
 	}
 
-	u.CursorY = docLine
-	u.CursorX = x
-	u.clampCursor()
-	u.updateStatusLink()
-
-	buttons := ev.Buttons()
-	if buttons&tcell.WheelUp != 0 {
-		u.scroll(-3)
-		return
-	}
-	if buttons&tcell.WheelDown != 0 {
-		u.scroll(3)
-		return
-	}
-
 	if buttons&tcell.Button1 != 0 {
 		if !u.mouseSelecting {
 			u.mouseSelecting = true
-			u.mouseStartY = u.CursorY
-			u.mouseStartX = u.CursorX
+			u.mouseStartY = docLine
+			u.mouseStartX = x
 			u.mouseHadDrag = false
+
+			u.CursorY = docLine
+			u.CursorX = x
+			u.clampCursor()
+			u.updateStatusLink()
+		} else {
+			u.CursorY = docLine
+			u.CursorX = x
+			u.clampCursor()
+			u.updateStatusLink()
 		}
 
 		if u.CursorY != u.mouseStartY || u.CursorX != u.mouseStartX {

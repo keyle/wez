@@ -481,7 +481,8 @@ func (b *Browser) openImage(imgURL string) {
 		}
 	}()
 
-	fmt.Printf("Opening image: %s\n", imgURL)
+	// Ensure viewer output starts cleanly on a fresh line.
+	fmt.Print("\n")
 	if err := cmd.Run(); err != nil {
 		fmt.Printf("Viewer error: %v\n", err)
 	}
