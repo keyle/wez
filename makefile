@@ -10,7 +10,7 @@ test: clean
 run:
 	go run .
 
-all: default test release install 
+all: default test html release
 
 clean:
 	rm -f ./wez
