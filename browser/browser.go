@@ -64,7 +64,7 @@ func New(cfg config.Config, km *keymap.Keymap) (*Browser, error) {
 func (b *Browser) Navigate(rawURL string) {
 	const maxMetaRedirectHops = 8
 
-	result, err := b.fetchWithStatusAnimation(rawURL)
+	result, err := b.fetchWithStatusAnimation(rawURL, "Loading")
 	if err != nil {
 		b.showError(fmt.Sprintf("Error loading %s: %v", rawURL, err))
 		return
@@ -86,7 +86,7 @@ func (b *Browser) Navigate(rawURL string) {
 			}
 			seen[nextURL] = true
 
-			result, err = b.fetchWithStatusAnimation(nextURL)
+			result, err = b.fetchWithStatusAnimation(nextURL, "Loading")
 			if err != nil {
 				b.showError(fmt.Sprintf("Error loading %s: %v", nextURL, err))
 				return
@@ -251,10 +251,13 @@ func (b *Browser) showError(msg string) {
 	b.UI.SetStatus(msg)
 }
 
-func (b *Browser) fetchWithStatusAnimation(rawURL string) (*fetch.Result, error) {
+func (b *Browser) fetchWithStatusAnimation(rawURL, label string) (*fetch.Result, error) {
 	type fetchResult struct {
 		result *fetch.Result
 		err    error
+	}
+	if strings.TrimSpace(label) == "" {
+		label = "Loading"
 	}
 
 	ch := make(chan fetchResult, 1)
@@ -268,7 +271,7 @@ func (b *Browser) fetchWithStatusAnimation(rawURL string) (*fetch.Result, error)
 
 	step := 0
 	for {
-		b.UI.SetStatus(fmt.Sprintf("%s %s", loadingFrame(step), shortenForStatus(rawURL, 52)))
+		b.UI.SetStatus(fmt.Sprintf("%s %s %s", loadingFrame(step), label, shortenForStatus(rawURL, 46)))
 		b.UI.Draw()
 
 		select {
@@ -609,10 +612,7 @@ func (b *Browser) openMailto(mailtoURL string) {
 }
 
 func (b *Browser) openImage(imgURL string) {
-	b.UI.SetStatus("Fetching image...")
-	b.UI.Draw()
-
-	result, err := fetch.Fetch(imgURL)
+	result, err := b.fetchWithStatusAnimation(imgURL, "Fetching image")
 	if err != nil {
 		b.UI.SetStatus("Error fetching image: " + err.Error())
 		return
