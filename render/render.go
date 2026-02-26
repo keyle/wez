@@ -418,7 +418,18 @@ func (r *renderer) addLongWord(word string) {
 
 func (r *renderer) addIndent() {
 	if r.indent > 0 {
+		oldLinkIdx := r.curLinkIdx
+		oldControlIdx := r.curControlIdx
+		oldUnderline := r.underline
+
+		r.curLinkIdx = -1
+		r.curControlIdx = -1
+		r.underline = false
 		r.appendToLine(strings.Repeat(" ", r.indent))
+
+		r.curLinkIdx = oldLinkIdx
+		r.curControlIdx = oldControlIdx
+		r.underline = oldUnderline
 	}
 }
 

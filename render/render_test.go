@@ -260,6 +260,19 @@ func TestLinkLeadingWhitespaceTrimmed(t *testing.T) {
 	}
 }
 
+func TestWrappedLinkIndentIsNotLinkStyled(t *testing.T) {
+	html := `<html><body><blockquote><a href="/x">alpha beta gamma delta epsilon zeta eta theta iota kappa lambda</a></blockquote></body></html>`
+	doc := Render([]byte(html), "https://example.com", 24)
+
+	for _, line := range doc.Lines {
+		for _, span := range line.Spans {
+			if span.LinkIdx >= 0 && strings.TrimSpace(span.Text) == "" {
+				t.Fatalf("expected indentation spaces outside link styling, got link span: %q", span.Text)
+			}
+		}
+	}
+}
+
 func TestRenderHR(t *testing.T) {
 	html := `<html><body><p>Above</p><hr><p>Below</p></body></html>`
 	doc := Render([]byte(html), "http://example.com", 80)
