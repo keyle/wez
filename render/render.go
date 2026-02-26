@@ -3,6 +3,7 @@ package render
 import (
 	"fmt"
 	"net/url"
+	"strconv"
 	"strings"
 	"unicode"
 
@@ -18,14 +19,15 @@ func Render(htmlBytes []byte, pageURL string, width int) *Document {
 		return &Document{
 			Title: "Parse Error",
 			URL:   pageURL,
-			Lines: []Line{{Spans: []Span{{Text: "Error parsing HTML: " + err.Error()}}}},
+			Lines: []Line{{Spans: []Span{{Text: "Error parsing HTML: " + err.Error(), LinkIdx: -1, ControlIdx: -1}}}},
 		}
 	}
 
 	r := &renderer{
-		width:      width,
-		curLinkIdx: -1,
-		pageURL:    pageURL,
+		width:         width,
+		curLinkIdx:    -1,
+		curControlIdx: -1,
+		pageURL:       pageURL,
 	}
 
 	// Extract title.
@@ -43,10 +45,12 @@ func Render(htmlBytes []byte, pageURL string, width int) *Document {
 	lines, links := compactVerticalWhitespace(r.lines, r.links)
 
 	return &Document{
-		Title: r.title,
-		URL:   pageURL,
-		Lines: lines,
-		Links: links,
+		Title:    r.title,
+		URL:      pageURL,
+		Lines:    lines,
+		Links:    links,
+		Forms:    r.forms,
+		Controls: r.controls,
 	}
 }
 
@@ -58,7 +62,7 @@ func RenderPlainText(text []byte, pageURL string, width int) *Document {
 		wrapped := wrapPlainLine(line, width)
 		for _, part := range wrapped {
 			docLines = append(docLines, Line{
-				Spans: []Span{{Text: part, LinkIdx: -1}},
+				Spans: []Span{{Text: part, LinkIdx: -1, ControlIdx: -1}},
 			})
 		}
 	}
@@ -136,7 +140,13 @@ type renderer struct {
 	bgColor   string
 
 	// Link context
-	curLinkIdx int // -1 if not in a link
+	curLinkIdx    int // -1 if not in a link
+	curControlIdx int // -1 if not in a form control
+
+	// Form context
+	forms     []Form
+	controls  []Control
+	formStack []int
 
 	// List context
 	listStack []listCtx
@@ -165,12 +175,13 @@ func (r *renderer) appendToLine(text string) {
 	}
 	style := r.currentStyle()
 	linkIdx := r.curLinkIdx
+	controlIdx := r.curControlIdx
 	imageURL := ""
 
 	// Merge with last span if same attributes.
 	if len(r.curSpans) > 0 {
 		last := &r.curSpans[len(r.curSpans)-1]
-		if last.Style == style && last.LinkIdx == linkIdx && last.ImageURL == "" {
+		if last.Style == style && last.LinkIdx == linkIdx && last.ControlIdx == controlIdx && last.ImageURL == "" {
 			last.Text += text
 			r.curCol += runewidth.StringWidth(text)
 			return
@@ -178,10 +189,11 @@ func (r *renderer) appendToLine(text string) {
 	}
 
 	r.curSpans = append(r.curSpans, Span{
-		Text:     text,
-		Style:    style,
-		LinkIdx:  linkIdx,
-		ImageURL: imageURL,
+		Text:       text,
+		Style:      style,
+		LinkIdx:    linkIdx,
+		ControlIdx: controlIdx,
+		ImageURL:   imageURL,
 	})
 	r.curCol += runewidth.StringWidth(text)
 }
@@ -452,7 +464,7 @@ func (r *renderer) handleElement(n *html.Node) {
 		r.ensureBlankLine()
 
 	case atom.P, atom.Section, atom.Article, atom.Main,
-		atom.Header, atom.Footer, atom.Nav, atom.Form, atom.Fieldset,
+		atom.Header, atom.Footer, atom.Nav, atom.Fieldset,
 		atom.Figure, atom.Figcaption, atom.Details, atom.Summary,
 		atom.Address:
 		r.ensureBlankLine()
@@ -461,6 +473,9 @@ func (r *renderer) handleElement(n *html.Node) {
 		}
 		r.walkChildren(n)
 		r.ensureBlankLine()
+
+	case atom.Form:
+		r.handleForm(n)
 
 	case atom.H1, atom.H2, atom.H3, atom.H4, atom.H5, atom.H6:
 		r.handleHeading(n, tagName)
@@ -585,6 +600,18 @@ func (r *renderer) handleElement(n *html.Node) {
 
 	case atom.Img:
 		r.handleImage(n)
+
+	case atom.Input:
+		r.handleInput(n)
+
+	case atom.Textarea:
+		r.handleTextarea(n)
+
+	case atom.Select:
+		r.handleSelect(n)
+
+	case atom.Button:
+		r.handleButton(n)
 
 	case atom.Sup:
 		r.appendToLine("^")
@@ -754,16 +781,259 @@ func (r *renderer) handleImage(n *html.Node) {
 
 	startCol := r.curCol
 	span := Span{
-		Text:     label,
-		Style:    r.currentStyle(),
-		LinkIdx:  r.curLinkIdx,
-		ImageURL: resolved,
+		Text:       label,
+		Style:      r.currentStyle(),
+		LinkIdx:    r.curLinkIdx,
+		ControlIdx: -1,
+		ImageURL:   resolved,
 	}
 	r.curSpans = append(r.curSpans, span)
 	r.curCol += runewidth.StringWidth(label)
 	_ = startCol
 
 	r.color = oldColor
+}
+
+func (r *renderer) currentFormIdx() int {
+	if len(r.formStack) == 0 {
+		return -1
+	}
+	return r.formStack[len(r.formStack)-1]
+}
+
+func (r *renderer) registerControl(c Control) int {
+	idx := len(r.controls)
+	r.controls = append(r.controls, c)
+	if c.FormIdx >= 0 && c.FormIdx < len(r.forms) {
+		r.forms[c.FormIdx].Controls = append(r.forms[c.FormIdx].Controls, idx)
+	}
+	return idx
+}
+
+func (r *renderer) addControlToken(controlIdx int, text string, bold bool) {
+	if controlIdx < 0 || controlIdx >= len(r.controls) || text == "" {
+		return
+	}
+
+	if r.pendingSpace && r.curCol > r.indent {
+		r.pendingSpace = false
+		r.appendToLine(" ")
+	}
+
+	maxW := r.width - r.indent
+	if maxW < 4 {
+		maxW = 4
+	}
+	if runewidth.StringWidth(text) > maxW {
+		text = truncateToWidth(text, maxW)
+	}
+
+	tw := runewidth.StringWidth(text)
+	if r.curCol+tw > r.width && r.curCol > r.indent {
+		r.flushLine()
+		if r.indent > 0 {
+			r.addIndent()
+		}
+	}
+
+	r.controls[controlIdx].Line = len(r.lines)
+	r.controls[controlIdx].Col = r.curCol
+	r.controls[controlIdx].Width = tw
+
+	oldColor := r.color
+	oldBold := r.bold
+	oldControl := r.curControlIdx
+
+	r.color = "code"
+	r.bold = bold || r.bold
+	r.curControlIdx = controlIdx
+	r.appendToLine(text)
+
+	r.curControlIdx = oldControl
+	r.bold = oldBold
+	r.color = oldColor
+}
+
+func (r *renderer) handleForm(n *html.Node) {
+	method := strings.ToUpper(strings.TrimSpace(getAttr(n, "method")))
+	if method == "" {
+		method = "GET"
+	}
+	if method != "GET" && method != "POST" {
+		method = "GET"
+	}
+
+	action := strings.TrimSpace(getAttr(n, "action"))
+	if action == "" {
+		action = r.pageURL
+	} else {
+		action = r.resolveURL(action)
+	}
+
+	enctype := strings.ToLower(strings.TrimSpace(getAttr(n, "enctype")))
+	if enctype == "" {
+		enctype = "application/x-www-form-urlencoded"
+	}
+
+	formIdx := len(r.forms)
+	r.forms = append(r.forms, Form{
+		Method:   method,
+		Action:   action,
+		Enctype:  enctype,
+		Controls: nil,
+	})
+
+	r.ensureBlankLine()
+	r.formStack = append(r.formStack, formIdx)
+	r.walkChildren(n)
+	r.formStack = r.formStack[:len(r.formStack)-1]
+	r.ensureBlankLine()
+}
+
+func (r *renderer) handleInput(n *html.Node) {
+	inputType := strings.ToLower(strings.TrimSpace(getAttr(n, "type")))
+	if inputType == "" {
+		inputType = "text"
+	}
+
+	ctrl := Control{
+		Kind:        "input",
+		Type:        inputType,
+		FormIdx:     r.currentFormIdx(),
+		Name:        strings.TrimSpace(getAttr(n, "name")),
+		Value:       getAttr(n, "value"),
+		Checked:     hasAttr(n, "checked"),
+		Disabled:    hasAttr(n, "disabled"),
+		ReadOnly:    hasAttr(n, "readonly"),
+		DisplaySize: parsePositiveInt(getAttr(n, "size"), 20),
+		Line:        -1,
+		Col:         -1,
+		Width:       0,
+	}
+
+	if (inputType == "checkbox" || inputType == "radio") && strings.TrimSpace(ctrl.Value) == "" {
+		ctrl.Value = "on"
+	}
+	if inputType == "submit" && strings.TrimSpace(ctrl.Value) == "" {
+		ctrl.Value = "submit"
+	}
+	if inputType == "reset" && strings.TrimSpace(ctrl.Value) == "" {
+		ctrl.Value = "reset"
+	}
+	if inputType == "image" {
+		ctrl.Type = "submit"
+		if strings.TrimSpace(ctrl.Value) == "" {
+			ctrl.Value = strings.TrimSpace(getAttr(n, "alt"))
+		}
+		if strings.TrimSpace(ctrl.Value) == "" {
+			ctrl.Value = "submit"
+		}
+	}
+
+	if inputType == "hidden" {
+		r.registerControl(ctrl)
+		return
+	}
+
+	if inputType == "checkbox" || inputType == "radio" {
+		ctrl.DisplaySize = 3
+	}
+
+	idx := r.registerControl(ctrl)
+	label := ControlDisplayText(r.controls[idx])
+	r.addControlToken(idx, label, inputType == "submit" || inputType == "button" || inputType == "reset")
+}
+
+func (r *renderer) handleTextarea(n *html.Node) {
+	value := textContent(n)
+	value = strings.ReplaceAll(value, "\r", "")
+	value = strings.ReplaceAll(value, "\n", " ")
+
+	ctrl := Control{
+		Kind:        "textarea",
+		Type:        "textarea",
+		FormIdx:     r.currentFormIdx(),
+		Name:        strings.TrimSpace(getAttr(n, "name")),
+		Value:       value,
+		Disabled:    hasAttr(n, "disabled"),
+		ReadOnly:    hasAttr(n, "readonly"),
+		DisplaySize: parsePositiveInt(getAttr(n, "cols"), 28),
+		Line:        -1,
+		Col:         -1,
+		Width:       0,
+	}
+
+	idx := r.registerControl(ctrl)
+	r.addControlToken(idx, ControlDisplayText(r.controls[idx]), false)
+}
+
+func (r *renderer) handleSelect(n *html.Node) {
+	options := collectSelectOptions(n)
+	multiple := hasAttr(n, "multiple")
+
+	if !multiple {
+		selected := false
+		for i := range options {
+			if options[i].Selected {
+				selected = true
+				break
+			}
+		}
+		if !selected && len(options) > 0 {
+			options[0].Selected = true
+		}
+	}
+
+	ctrl := Control{
+		Kind:        "select",
+		Type:        "select",
+		FormIdx:     r.currentFormIdx(),
+		Name:        strings.TrimSpace(getAttr(n, "name")),
+		Disabled:    hasAttr(n, "disabled"),
+		ReadOnly:    false,
+		Multiple:    multiple,
+		Options:     options,
+		DisplaySize: parsePositiveInt(getAttr(n, "size"), 20),
+		Line:        -1,
+		Col:         -1,
+		Width:       0,
+	}
+	ctrl.Value = selectControlValue(ctrl)
+
+	idx := r.registerControl(ctrl)
+	r.addControlToken(idx, ControlDisplayText(r.controls[idx]), false)
+}
+
+func (r *renderer) handleButton(n *html.Node) {
+	btnType := strings.ToLower(strings.TrimSpace(getAttr(n, "type")))
+	if btnType == "" {
+		btnType = "submit"
+	}
+
+	label := strings.TrimSpace(getAttr(n, "value"))
+	if label == "" {
+		label = strings.TrimSpace(textContent(n))
+	}
+	if label == "" {
+		label = btnType
+	}
+
+	ctrl := Control{
+		Kind:        "button",
+		Type:        btnType,
+		FormIdx:     r.currentFormIdx(),
+		Name:        strings.TrimSpace(getAttr(n, "name")),
+		Value:       label,
+		Disabled:    hasAttr(n, "disabled"),
+		ReadOnly:    false,
+		DisplaySize: runewidth.StringWidth(label),
+		Line:        -1,
+		Col:         -1,
+		Width:       0,
+	}
+
+	idx := r.registerControl(ctrl)
+	r.addControlToken(idx, ControlDisplayText(r.controls[idx]), true)
 }
 
 // handleTable renders a table with simple column alignment.
@@ -965,6 +1235,75 @@ func getAttr(n *html.Node, key string) string {
 		}
 	}
 	return ""
+}
+
+func hasAttr(n *html.Node, key string) bool {
+	for _, a := range n.Attr {
+		if strings.EqualFold(a.Key, key) {
+			return true
+		}
+	}
+	return false
+}
+
+func parsePositiveInt(s string, fallback int) int {
+	v := strings.TrimSpace(s)
+	if v == "" {
+		return fallback
+	}
+	n, err := strconv.Atoi(v)
+	if err != nil || n <= 0 {
+		return fallback
+	}
+	return n
+}
+
+func collectSelectOptions(selectNode *html.Node) []ControlOption {
+	opts := make([]ControlOption, 0, 4)
+	var walk func(*html.Node, bool)
+	walk = func(n *html.Node, inheritedDisabled bool) {
+		if n == nil {
+			return
+		}
+
+		disabled := inheritedDisabled || hasAttr(n, "disabled")
+		if n.Type == html.ElementNode && n.DataAtom == atom.Option {
+			label := strings.TrimSpace(textContent(n))
+			value := strings.TrimSpace(getAttr(n, "value"))
+			if value == "" {
+				value = label
+			}
+			opts = append(opts, ControlOption{
+				Value:    value,
+				Label:    label,
+				Selected: hasAttr(n, "selected"),
+				Disabled: disabled,
+			})
+			return
+		}
+
+		for c := n.FirstChild; c != nil; c = c.NextSibling {
+			walk(c, disabled)
+		}
+	}
+	walk(selectNode, false)
+	return opts
+}
+
+func selectControlValue(c Control) string {
+	vals := make([]string, 0, len(c.Options))
+	for _, opt := range c.Options {
+		if opt.Selected {
+			vals = append(vals, opt.Value)
+		}
+	}
+	if len(vals) == 0 {
+		return ""
+	}
+	if c.Multiple {
+		return strings.Join(vals, ",")
+	}
+	return vals[0]
 }
 
 func isWhitespace(r rune) bool {

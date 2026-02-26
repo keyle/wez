@@ -15,13 +15,16 @@ import (
 const Version = "1.1"
 
 type Config struct {
-	ImageViewer         string      `toml:"image_viewer"`
-	MailtoHandler       string      `toml:"mailto_handler"`
-	DownloadDir         string      `toml:"download_dir"`
-	FollowMetaRedirects bool        `toml:"follow_meta_redirects"`
-	SearchEngine        string      `toml:"search_engine"`
-	SearchURLTmpl       string      `toml:"search_url_template"`
-	Colors              ColorConfig `toml:"colors"`
+	ImageViewer           string      `toml:"image_viewer"`
+	MailtoHandler         string      `toml:"mailto_handler"`
+	DownloadDir           string      `toml:"download_dir"`
+	PersistCookies        bool        `toml:"persist_cookies"`
+	CookieJarPath         string      `toml:"cookie_jar_path"`
+	PersistSessionCookies bool        `toml:"persist_session_cookies"`
+	FollowMetaRedirects   bool        `toml:"follow_meta_redirects"`
+	SearchEngine          string      `toml:"search_engine"`
+	SearchURLTmpl         string      `toml:"search_url_template"`
+	Colors                ColorConfig `toml:"colors"`
 }
 
 type ColorConfig struct {
@@ -42,12 +45,15 @@ type ColorConfig struct {
 
 func Default() Config {
 	return Config{
-		ImageViewer:         "viu %s",
-		MailtoHandler:       "open mailto:%s",
-		DownloadDir:         defaultDownloadDir(),
-		FollowMetaRedirects: true,
-		SearchEngine:        "duckduckgo",
-		SearchURLTmpl:       "",
+		ImageViewer:           "viu %s",
+		MailtoHandler:         "open mailto:%s",
+		DownloadDir:           defaultDownloadDir(),
+		PersistCookies:        true,
+		CookieJarPath:         defaultCookieJarPath(),
+		PersistSessionCookies: true,
+		FollowMetaRedirects:   true,
+		SearchEngine:          "duckduckgo",
+		SearchURLTmpl:         "",
 		Colors: ColorConfig{
 			Link:        "blue",
 			VisitedLink: "purple",
@@ -94,6 +100,11 @@ func Load() (Config, error) {
 		cfg.DownloadDir = defaultDownloadDir()
 	}
 	cfg.DownloadDir = expandHomePath(cfg.DownloadDir)
+
+	if cfg.CookieJarPath == "" {
+		cfg.CookieJarPath = defaultCookieJarPath()
+	}
+	cfg.CookieJarPath = expandHomePath(cfg.CookieJarPath)
 
 	if cfg.SearchEngine == "" {
 		cfg.SearchEngine = "duckduckgo"
@@ -305,6 +316,10 @@ func defaultDownloadDir() string {
 	return homeDir
 }
 
+func defaultCookieJarPath() string {
+	return filepath.Join(CacheDir(), "cookies.json")
+}
+
 func expandHomePath(path string) string {
 	if path == "" || path[0] != '~' {
 		return path
@@ -353,6 +368,15 @@ mailto_handler = "open mailto:%%s"
 # Directory where downloaded binary files (e.g. PDF, ZIP) are saved.
 download_dir = %q
 
+# Persist cookies across browser restarts.
+persist_cookies = %t
+
+# Cookie jar path for persisted cookies.
+cookie_jar_path = %q
+
+# Persist session cookies as well (keeps many logins active after restart).
+persist_session_cookies = %t
+
 # Follow HTML meta-refresh redirects (including ones inside <noscript>),
 # similar to text browsers like w3m/lynx.
 follow_meta_redirects = %t
@@ -384,5 +408,5 @@ top_bar     = "black"
 top_bar_bg  = "white"
 status_bar  = "gray"
 status_bar_bg = "black"
-`, shortHome(cfg.DownloadDir), cfg.FollowMetaRedirects, cfg.SearchEngine, cfg.SearchURLTmpl)
+`, shortHome(cfg.DownloadDir), cfg.PersistCookies, shortHome(cfg.CookieJarPath), cfg.PersistSessionCookies, cfg.FollowMetaRedirects, cfg.SearchEngine, cfg.SearchURLTmpl)
 }

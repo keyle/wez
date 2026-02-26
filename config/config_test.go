@@ -21,6 +21,15 @@ func TestDefault(t *testing.T) {
 	if cfg.DownloadDir == "" {
 		t.Error("expected default download directory to be set")
 	}
+	if !cfg.PersistCookies {
+		t.Error("expected persist_cookies default true")
+	}
+	if !cfg.PersistSessionCookies {
+		t.Error("expected persist_session_cookies default true")
+	}
+	if cfg.CookieJarPath == "" {
+		t.Error("expected default cookie_jar_path to be set")
+	}
 	if cfg.SearchEngine != "duckduckgo" {
 		t.Errorf("expected default search engine 'duckduckgo', got %q", cfg.SearchEngine)
 	}
@@ -90,6 +99,15 @@ func TestAutoCreateConfig(t *testing.T) {
 	if !strings.Contains(string(content), "search_url_template") {
 		t.Error("expected auto-created config to include search_url_template")
 	}
+	if !strings.Contains(string(content), "persist_cookies") {
+		t.Error("expected auto-created config to include persist_cookies")
+	}
+	if !strings.Contains(string(content), "cookie_jar_path") {
+		t.Error("expected auto-created config to include cookie_jar_path")
+	}
+	if !strings.Contains(string(content), "persist_session_cookies") {
+		t.Error("expected auto-created config to include persist_session_cookies")
+	}
 	if !strings.Contains(string(content), "top_bar_bg") {
 		t.Error("expected auto-created config to include top_bar_bg")
 	}
@@ -120,6 +138,9 @@ func TestLoadFromFile(t *testing.T) {
 	configContent := `
 image_viewer = "feh %s"
 download_dir = "~/Downloads"
+persist_cookies = false
+cookie_jar_path = "~/.cache/wez/custom-cookies.json"
+persist_session_cookies = false
 search_engine = "bing"
 follow_meta_redirects = false
 
@@ -149,6 +170,15 @@ heading = "green"
 	}
 	if cfg.SearchEngine != "bing" {
 		t.Errorf("expected search_engine bing, got %q", cfg.SearchEngine)
+	}
+	if cfg.PersistCookies {
+		t.Error("expected persist_cookies=false from config")
+	}
+	if cfg.PersistSessionCookies {
+		t.Error("expected persist_session_cookies=false from config")
+	}
+	if cfg.CookieJarPath != filepath.Join(tmpDir, ".cache", "wez", "custom-cookies.json") {
+		t.Errorf("expected expanded cookie_jar_path, got %q", cfg.CookieJarPath)
 	}
 	if cfg.FollowMetaRedirects {
 		t.Error("expected follow_meta_redirects=false from config")

@@ -33,11 +33,18 @@ var (
 
 const maxMetaRedirectHops = 8
 
+type formSubmission struct {
+	Method    string
+	ActionURL string
+	Values    url.Values
+}
+
 // Browser ties all components together.
 type Browser struct {
 	UI      *ui.UI
 	Cfg     config.Config
 	History *history.History
+	Fetcher *fetch.Client
 
 	// Navigation stacks.
 	backStack    []string
@@ -59,6 +66,11 @@ func New(cfg config.Config, km *keymap.Keymap) (*Browser, error) {
 		UI:      tui,
 		Cfg:     cfg,
 		History: hist,
+		Fetcher: fetch.NewClientWithOptions(fetch.ClientOptions{
+			PersistCookies:        cfg.PersistCookies,
+			CookieJarPath:         cfg.CookieJarPath,
+			PersistSessionCookies: cfg.PersistSessionCookies,
+		}),
 	}, nil
 }
 
@@ -71,7 +83,10 @@ func (b *Browser) Navigate(rawURL string) {
 		b.showError(fmt.Sprintf("Error loading %s: %v", rawURL, err))
 		return
 	}
+	b.applyFetchResult(result)
+}
 
+func (b *Browser) applyFetchResult(result *fetch.Result) {
 	if shouldDownload(result.ContentType) {
 		savedPath, saveErr := b.saveDownload(result)
 		if saveErr != nil {
@@ -156,6 +171,7 @@ func DumpURL(cfg config.Config, rawURL string, width int) (string, error) {
 // Run starts the main event loop. If initialURL is non-empty, navigates there first.
 func (b *Browser) Run(initialURL string) {
 	defer b.UI.Close()
+	defer b.Close()
 
 	if initialURL != "" {
 		b.Navigate(initialURL)
@@ -188,8 +204,16 @@ func (b *Browser) Run(initialURL string) {
 					} else {
 						b.Navigate(linkURL)
 					}
+					break
+				}
+
+				if controlIdx, ok := b.UI.Doc.ControlAt(b.UI.CursorY, b.UI.CursorX); ok {
+					b.activateControl(controlIdx)
 				}
 			}
+
+		case ui.ActionCommitFormInput:
+			b.UI.ApplyFormInput()
 
 		case ui.ActionBack:
 			if len(b.backStack) > 0 {
@@ -255,6 +279,240 @@ func (b *Browser) Run(initialURL string) {
 	}
 }
 
+func (b *Browser) Close() {
+	if b == nil || b.Fetcher == nil {
+		return
+	}
+	if err := b.Fetcher.Close(); err != nil {
+		if b.UI != nil {
+			b.UI.SetStatus("cookie save error: " + err.Error())
+		}
+	}
+}
+
+func (b *Browser) activateControl(controlIdx int) {
+	if b.UI.Doc == nil || controlIdx < 0 || controlIdx >= len(b.UI.Doc.Controls) {
+		return
+	}
+
+	c := b.UI.Doc.Controls[controlIdx]
+	if c.Disabled {
+		b.UI.SetStatus("Control is disabled")
+		return
+	}
+
+	switch c.Kind {
+	case "input":
+		switch c.Type {
+		case "text", "password", "search", "email", "url", "tel", "number":
+			b.UI.BeginControlEdit(controlIdx)
+		case "checkbox", "radio":
+			b.UI.ToggleControl(controlIdx)
+		case "submit":
+			b.submitFormControl(controlIdx)
+		case "button":
+			b.UI.SetStatus("Input button has no default action")
+		case "reset":
+			b.UI.SetStatus("Reset controls are not implemented")
+		default:
+			b.UI.SetStatus("Control type not supported")
+		}
+
+	case "textarea", "select":
+		b.UI.BeginControlEdit(controlIdx)
+
+	case "button":
+		switch c.Type {
+		case "submit", "":
+			b.submitFormControl(controlIdx)
+		case "reset":
+			b.UI.SetStatus("Reset buttons are not implemented")
+		default:
+			b.UI.SetStatus("Button has no default action")
+		}
+	}
+}
+
+func (b *Browser) submitFormControl(controlIdx int) {
+	if b.UI.Doc == nil {
+		return
+	}
+
+	sub, err := buildFormSubmission(b.UI.Doc, controlIdx)
+	if err != nil {
+		b.UI.SetStatus("Form submit error: " + err.Error())
+		return
+	}
+
+	result, err := b.submitWithStatusAnimation(sub.ActionURL, sub.Method, sub.Values)
+	if err != nil {
+		b.showError(fmt.Sprintf("Error submitting form: %v", err))
+		return
+	}
+
+	result, err = b.followMetaRedirectsResult(result)
+	if err != nil {
+		b.showError(fmt.Sprintf("Error following redirect: %v", err))
+		return
+	}
+
+	b.applyFetchResult(result)
+}
+
+func (b *Browser) submitWithStatusAnimation(actionURL, method string, values url.Values) (*fetch.Result, error) {
+	type submitResult struct {
+		result *fetch.Result
+		err    error
+	}
+
+	if b.Fetcher == nil {
+		b.Fetcher = fetch.NewClient()
+	}
+
+	ch := make(chan submitResult, 1)
+	go func() {
+		result, err := b.Fetcher.SubmitForm(actionURL, method, values)
+		ch <- submitResult{result: result, err: err}
+	}()
+
+	ticker := time.NewTicker(120 * time.Millisecond)
+	defer ticker.Stop()
+
+	step := 0
+	for {
+		b.UI.SetStatus(fmt.Sprintf("%s Submitting %s", loadingFrame(step), shortenForStatus(actionURL, 46)))
+		b.UI.Draw()
+
+		select {
+		case out := <-ch:
+			if out.err == nil {
+				b.UI.SetStatus("")
+			}
+			return out.result, out.err
+		case <-ticker.C:
+			step++
+		}
+	}
+}
+
+func (b *Browser) followMetaRedirectsResult(result *fetch.Result) (*fetch.Result, error) {
+	if result == nil || !b.Cfg.FollowMetaRedirects {
+		return result, nil
+	}
+
+	seen := map[string]bool{result.FinalURL: true}
+	for hops := 0; hops < maxMetaRedirectHops; hops++ {
+		if !isHTMLContentType(result.ContentType) {
+			break
+		}
+
+		nextURL, ok := extractMetaRefreshURL(result.Body, result.FinalURL)
+		if !ok || nextURL == "" {
+			break
+		}
+		if seen[nextURL] {
+			break
+		}
+		seen[nextURL] = true
+
+		next, err := b.fetchWithStatusAnimation(nextURL, "Loading")
+		if err != nil {
+			return nil, err
+		}
+		result = next
+	}
+
+	return result, nil
+}
+
+func buildFormSubmission(doc *render.Document, submitControlIdx int) (formSubmission, error) {
+	if doc == nil {
+		return formSubmission{}, fmt.Errorf("no document")
+	}
+	if submitControlIdx < 0 || submitControlIdx >= len(doc.Controls) {
+		return formSubmission{}, fmt.Errorf("invalid submit control")
+	}
+
+	submit := doc.Controls[submitControlIdx]
+	if submit.FormIdx < 0 || submit.FormIdx >= len(doc.Forms) {
+		return formSubmission{}, fmt.Errorf("control is not inside a form")
+	}
+
+	form := doc.Forms[submit.FormIdx]
+	method := strings.ToUpper(strings.TrimSpace(form.Method))
+	if method == "" {
+		method = "GET"
+	}
+	if method != "GET" && method != "POST" {
+		method = "GET"
+	}
+
+	actionURL := strings.TrimSpace(form.Action)
+	if actionURL == "" {
+		actionURL = doc.URL
+	}
+
+	values := url.Values{}
+	for _, idx := range form.Controls {
+		if idx < 0 || idx >= len(doc.Controls) {
+			continue
+		}
+		c := doc.Controls[idx]
+		for _, kv := range successfulControlValues(c, idx, submitControlIdx) {
+			values.Add(kv.key, kv.value)
+		}
+	}
+
+	return formSubmission{Method: method, ActionURL: actionURL, Values: values}, nil
+}
+
+type formKV struct {
+	key   string
+	value string
+}
+
+func successfulControlValues(c render.Control, controlIdx, submitControlIdx int) []formKV {
+	if c.Disabled || strings.TrimSpace(c.Name) == "" {
+		return nil
+	}
+
+	name := c.Name
+	vals := make([]formKV, 0, 2)
+
+	switch c.Kind {
+	case "textarea":
+		vals = append(vals, formKV{key: name, value: c.Value})
+
+	case "select":
+		for _, opt := range c.Options {
+			if opt.Selected && !opt.Disabled {
+				vals = append(vals, formKV{key: name, value: opt.Value})
+			}
+		}
+
+	case "button":
+		if strings.EqualFold(c.Type, "submit") && controlIdx == submitControlIdx {
+			vals = append(vals, formKV{key: name, value: c.Value})
+		}
+
+	case "input":
+		switch c.Type {
+		case "hidden", "text", "password", "search", "email", "url", "tel", "number":
+			vals = append(vals, formKV{key: name, value: c.Value})
+		case "checkbox", "radio":
+			if c.Checked {
+				vals = append(vals, formKV{key: name, value: c.Value})
+			}
+		case "submit":
+			if controlIdx == submitControlIdx {
+				vals = append(vals, formKV{key: name, value: c.Value})
+			}
+		}
+	}
+
+	return vals
+}
+
 func (b *Browser) showError(msg string) {
 	doc := &render.Document{
 		Title: "Error",
@@ -280,9 +538,13 @@ func (b *Browser) fetchWithStatusAnimation(rawURL, label string) (*fetch.Result,
 		label = "Loading"
 	}
 
+	if b.Fetcher == nil {
+		b.Fetcher = fetch.NewClient()
+	}
+
 	ch := make(chan fetchResult, 1)
 	go func() {
-		result, err := fetch.Fetch(rawURL)
+		result, err := b.Fetcher.Fetch(rawURL)
 		ch <- fetchResult{result: result, err: err}
 	}()
 
@@ -754,7 +1016,8 @@ func (b *Browser) ShowWelcome() {
 			{Spans: []render.Span{{Text: "  Ctrl-D/U    Half page down / up", LinkIdx: -1}}},
 			{Spans: []render.Span{{Text: "  Space       Page down", LinkIdx: -1}}},
 			{Spans: []render.Span{{Text: "  Tab / S-Tab Jump to next / previous link", LinkIdx: -1}}},
-			{Spans: []render.Span{{Text: "  Enter       Follow link under cursor", LinkIdx: -1}}},
+			{Spans: []render.Span{{Text: "  Enter       Activate link/form control under cursor", LinkIdx: -1}}},
+			{Spans: []render.Span{{Text: "              (edit fields, toggle checks, submit buttons)", LinkIdx: -1}}},
 			{Spans: []render.Span{{Text: "  b / B / H   Go back", LinkIdx: -1}}},
 			{Spans: []render.Span{{Text: "  L           Go forward", LinkIdx: -1}}},
 			{Spans: []render.Span{{Text: "  r / R       Reload page", LinkIdx: -1}}},

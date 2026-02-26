@@ -243,6 +243,95 @@ func TestRenderImageNoAlt(t *testing.T) {
 	}
 }
 
+func TestRenderFormControls(t *testing.T) {
+	html := `<html><body>
+	<form action="/login" method="post">
+		<input type="hidden" name="goto" value="news">
+		username: <input type="text" name="acct" value="alice" size="12">
+		password: <input type="password" name="pw" value="secret" size="12">
+		<input type="submit" name="do" value="login">
+	</form>
+	</body></html>`
+
+	doc := Render([]byte(html), "https://news.ycombinator.com/login", 120)
+	if len(doc.Forms) != 1 {
+		t.Fatalf("expected 1 form, got %d", len(doc.Forms))
+	}
+	if len(doc.Controls) < 4 {
+		t.Fatalf("expected at least 4 controls, got %d", len(doc.Controls))
+	}
+
+	var hiddenFound bool
+	for _, c := range doc.Controls {
+		if c.Kind == "input" && c.Type == "hidden" && c.Name == "goto" && c.Value == "news" {
+			hiddenFound = true
+		}
+		if c.Type != "hidden" {
+			if c.Line < 0 {
+				t.Fatalf("visible control %q missing line position", c.Name)
+			}
+			idx, ok := doc.ControlAt(c.Line, c.Col)
+			if !ok {
+				t.Fatalf("expected control hit at line=%d col=%d", c.Line, c.Col)
+			}
+			if idx < 0 || idx >= len(doc.Controls) {
+				t.Fatalf("invalid control index %d at line=%d col=%d", idx, c.Line, c.Col)
+			}
+		}
+	}
+	if !hiddenFound {
+		t.Fatal("expected hidden goto control")
+	}
+}
+
+func TestRenderButtonTag(t *testing.T) {
+	html := `<html><body><form action="/go"><button type="submit" name="act" value="ok">Login</button></form></body></html>`
+	doc := Render([]byte(html), "https://example.com", 80)
+
+	if len(doc.Controls) != 1 {
+		t.Fatalf("expected 1 control, got %d", len(doc.Controls))
+	}
+	c := doc.Controls[0]
+	if c.Kind != "button" || c.Type != "submit" {
+		t.Fatalf("expected submit button control, got kind=%q type=%q", c.Kind, c.Type)
+	}
+	if c.Value != "ok" {
+		t.Fatalf("expected button value from value attr, got %q", c.Value)
+	}
+	if !strings.Contains(docText(doc), "[ ok ]") {
+		t.Fatalf("expected rendered button text, got: %q", docText(doc))
+	}
+}
+
+func TestRenderSelectCheckboxRadio(t *testing.T) {
+	html := `<html><body><form>
+	<input type="checkbox" name="a" value="1" checked>
+	<input type="radio" name="r" value="x">
+	<input type="radio" name="r" value="y" checked>
+	<select name="s"><option value="one">One</option><option value="two" selected>Two</option></select>
+	</form></body></html>`
+
+	doc := Render([]byte(html), "https://example.com", 100)
+	if len(doc.Controls) != 4 {
+		t.Fatalf("expected 4 controls, got %d", len(doc.Controls))
+	}
+
+	if !strings.Contains(docText(doc), "[x]") {
+		t.Fatalf("expected checked checkbox marker, got: %q", docText(doc))
+	}
+	if !strings.Contains(docText(doc), "(*)") {
+		t.Fatalf("expected checked radio marker, got: %q", docText(doc))
+	}
+
+	last := doc.Controls[len(doc.Controls)-1]
+	if last.Kind != "select" {
+		t.Fatalf("expected last control to be select, got %q", last.Kind)
+	}
+	if last.Value != "two" {
+		t.Fatalf("expected selected value 'two', got %q", last.Value)
+	}
+}
+
 func TestRenderScriptIgnored(t *testing.T) {
 	html := `<html><body><script>alert('xss')</script><p>Visible</p></body></html>`
 	doc := Render([]byte(html), "http://example.com", 80)

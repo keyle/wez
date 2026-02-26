@@ -2,8 +2,11 @@ package fetch
 
 import (
 	"compress/gzip"
+	"io"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -146,5 +149,148 @@ func TestFetchEmptyURL(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "empty URL") {
 		t.Fatalf("expected empty URL error, got: %v", err)
+	}
+}
+
+func TestClientPersistsCookies(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/set":
+			http.SetCookie(w, &http.Cookie{Name: "sid", Value: "abc123", Path: "/"})
+			_, _ = w.Write([]byte("ok"))
+		case "/check":
+			cookie, err := r.Cookie("sid")
+			if err != nil {
+				http.Error(w, "missing cookie", http.StatusUnauthorized)
+				return
+			}
+			_, _ = w.Write([]byte(cookie.Value))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer ts.Close()
+
+	c := NewClient()
+	if _, err := c.Fetch(ts.URL + "/set"); err != nil {
+		t.Fatalf("set fetch failed: %v", err)
+	}
+	res, err := c.Fetch(ts.URL + "/check")
+	if err != nil {
+		t.Fatalf("check fetch failed: %v", err)
+	}
+	if string(res.Body) != "abc123" {
+		t.Fatalf("expected cookie value abc123, got %q", string(res.Body))
+	}
+}
+
+func TestClientSubmitFormPOST(t *testing.T) {
+	var gotMethod string
+	var gotCT string
+	var gotBody string
+
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotMethod = r.Method
+		gotCT = r.Header.Get("Content-Type")
+		data, _ := io.ReadAll(r.Body)
+		gotBody = string(data)
+		w.Header().Set("Content-Type", "text/plain")
+		_, _ = w.Write([]byte("ok"))
+	}))
+	defer ts.Close()
+
+	c := NewClient()
+	_, err := c.SubmitForm(ts.URL, "POST", url.Values{"a": {"1"}, "b": {"two words"}})
+	if err != nil {
+		t.Fatalf("unexpected submit error: %v", err)
+	}
+
+	if gotMethod != "POST" {
+		t.Fatalf("expected POST, got %q", gotMethod)
+	}
+	if !strings.HasPrefix(strings.ToLower(gotCT), "application/x-www-form-urlencoded") {
+		t.Fatalf("unexpected content-type: %q", gotCT)
+	}
+	if gotBody != "a=1&b=two+words" && gotBody != "b=two+words&a=1" {
+		t.Fatalf("unexpected form body: %q", gotBody)
+	}
+}
+
+func TestPersistentCookiesAcrossClients(t *testing.T) {
+	var sawCookie bool
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/login":
+			http.SetCookie(w, &http.Cookie{Name: "sid", Value: "persist-me", Path: "/"})
+			_, _ = w.Write([]byte("ok"))
+		case "/check":
+			cookie, err := r.Cookie("sid")
+			if err == nil && cookie.Value == "persist-me" {
+				sawCookie = true
+			}
+			_, _ = w.Write([]byte("done"))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer ts.Close()
+
+	jarPath := filepath.Join(t.TempDir(), "cookies.json")
+	opts := ClientOptions{PersistCookies: true, CookieJarPath: jarPath, PersistSessionCookies: true}
+
+	c1 := NewClientWithOptions(opts)
+	if _, err := c1.Fetch(ts.URL + "/login"); err != nil {
+		t.Fatalf("login fetch failed: %v", err)
+	}
+	if err := c1.Close(); err != nil {
+		t.Fatalf("close save failed: %v", err)
+	}
+
+	c2 := NewClientWithOptions(opts)
+	defer func() { _ = c2.Close() }()
+	if _, err := c2.Fetch(ts.URL + "/check"); err != nil {
+		t.Fatalf("check fetch failed: %v", err)
+	}
+	if !sawCookie {
+		t.Fatal("expected persisted cookie to be sent by second client")
+	}
+}
+
+func TestPersistSessionCookiesDisabled(t *testing.T) {
+	var sawCookie bool
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/login":
+			http.SetCookie(w, &http.Cookie{Name: "sid", Value: "session-only", Path: "/"})
+			_, _ = w.Write([]byte("ok"))
+		case "/check":
+			if _, err := r.Cookie("sid"); err == nil {
+				sawCookie = true
+			}
+			_, _ = w.Write([]byte("done"))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer ts.Close()
+
+	jarPath := filepath.Join(t.TempDir(), "cookies.json")
+	opts := ClientOptions{PersistCookies: true, CookieJarPath: jarPath, PersistSessionCookies: false}
+
+	c1 := NewClientWithOptions(opts)
+	if _, err := c1.Fetch(ts.URL + "/login"); err != nil {
+		t.Fatalf("login fetch failed: %v", err)
+	}
+	if err := c1.Close(); err != nil {
+		t.Fatalf("close save failed: %v", err)
+	}
+
+	c2 := NewClientWithOptions(opts)
+	defer func() { _ = c2.Close() }()
+	if _, err := c2.Fetch(ts.URL + "/check"); err != nil {
+		t.Fatalf("check fetch failed: %v", err)
+	}
+	if sawCookie {
+		t.Fatal("expected session cookie not to persist when disabled")
 	}
 }

@@ -20,10 +20,16 @@ wez is a modern, keyboard-driven terminal web browser.
 
 It focuses on readable output and fast navigation: basic HTML rendering,
 vim-style movement, link following, in-page search, external image viewing,
-downloads for binary responses, clipboard yanking, and configurable keymaps.
+downloads for binary responses, clipboard yanking, simple HTML form interaction,
+and configurable keymaps.
 
 JavaScript is not executed.
 Search engines that require JavaScript (for example Google Search) are not supported.
+
+Form support includes text/password fields, textarea, select (single/multiple),
+checkboxes/radios, and submit buttons. Text-like controls are edited in the top bar.
+
+Cookies are persisted by default in `~/.cache/wez/cookies.json` so logins can survive restarts.
 
 # OPTIONS
 
@@ -99,7 +105,7 @@ Default normal-mode bindings (subset):
 - `Ctrl-F` / `Ctrl-B` - page down / up
 - `Ctrl-D` / `Ctrl-U` - half-page down / up
 - `Tab` / `Shift-Tab` - next / previous link
-- `Enter` - follow link under cursor
+- `Enter` - activate link/control under cursor
 - `b` / `B` / `H` / `Backspace` - back
 - `L` - forward
 - `r` / `R` - reload

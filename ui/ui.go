@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os/exec"
 	"runtime"
+	"strconv"
 	"strings"
 
 	"github.com/gdamore/tcell/v2"
@@ -22,6 +23,7 @@ const (
 	ModeURLInput
 	ModeSearch
 	ModeWebSearch
+	ModeFormInput
 	ModeVisual
 	ModeVisualLine
 )
@@ -44,7 +46,8 @@ const (
 	ActionSearchPrev
 	ActionYankURL     // yank selected text or current line
 	ActionYankLinkURL // yank href of link under cursor
-	ActionOpenMailto  // open mailto link under cursor
+	ActionCommitFormInput
+	ActionOpenMailto // open mailto link under cursor
 )
 
 // UI manages the terminal display and input.
@@ -62,10 +65,12 @@ type UI struct {
 	CursorX int // cursor column in document coordinates
 
 	// Input
-	Mode        Mode
-	InputBuffer string
-	InputCursor int
-	InputPrompt string
+	Mode             Mode
+	InputBuffer      string
+	InputCursor      int
+	InputPrompt      string
+	formInputControl int
+	formInputMasked  bool
 
 	// Status
 	StatusMsg   string
@@ -109,10 +114,11 @@ func New(cfg config.Config, km *keymap.Keymap) (*UI, error) {
 	screen.Clear()
 
 	return &UI{
-		Screen: screen,
-		Cfg:    cfg,
-		Keymap: km,
-		Mode:   ModeNormal,
+		Screen:           screen,
+		Cfg:              cfg,
+		Keymap:           km,
+		Mode:             ModeNormal,
+		formInputControl: -1,
 	}, nil
 }
 
@@ -169,6 +175,8 @@ func (u *UI) SetDocument(doc *render.Document) {
 	u.SearchMatches = nil
 	u.Mode = ModeNormal
 	u.mouseSelecting = false
+	u.formInputControl = -1
+	u.formInputMasked = false
 }
 
 // SetStatus sets a temporary status message.
@@ -192,7 +200,7 @@ func (u *UI) Draw() {
 	contentStart := 0
 	contentEnd := h - 1 // status bar
 
-	if u.Mode == ModeURLInput || u.Mode == ModeSearch || u.Mode == ModeWebSearch {
+	if u.Mode == ModeURLInput || u.Mode == ModeSearch || u.Mode == ModeWebSearch || u.Mode == ModeFormInput {
 		contentStart = 1
 	}
 
@@ -250,7 +258,7 @@ func (u *UI) Draw() {
 	}
 
 	// Draw URL bar / search bar if active.
-	if u.Mode == ModeURLInput || u.Mode == ModeSearch || u.Mode == ModeWebSearch {
+	if u.Mode == ModeURLInput || u.Mode == ModeSearch || u.Mode == ModeWebSearch || u.Mode == ModeFormInput {
 		barStyle := tcell.StyleDefault.
 			Background(config.ParseColor(u.Cfg.Colors.TopBarBg)).
 			Foreground(config.ParseColor(u.Cfg.Colors.TopBar))
@@ -259,7 +267,11 @@ func (u *UI) Draw() {
 		}
 		prompt := u.InputPrompt
 		drawString(u.Screen, 0, 0, prompt, barStyle)
-		drawString(u.Screen, runewidth.StringWidth(prompt), 0, u.InputBuffer, barStyle)
+		inputText := u.InputBuffer
+		if u.Mode == ModeFormInput && u.formInputMasked {
+			inputText = strings.Repeat("*", len([]rune(u.InputBuffer)))
+		}
+		drawString(u.Screen, runewidth.StringWidth(prompt), 0, inputText, barStyle)
 		cursorPos := runewidth.StringWidth(prompt) + u.InputCursor
 		if cursorPos < w {
 			u.Screen.ShowCursor(cursorPos, 0)
@@ -344,12 +356,14 @@ func (u *UI) HandleEvent(ev tcell.Event) Action {
 			return u.handleInputKey(ev, ActionSearch)
 		case ModeWebSearch:
 			return u.handleInputKey(ev, ActionWebSearch)
+		case ModeFormInput:
+			return u.handleInputKey(ev, ActionCommitFormInput)
 		default:
 			return u.handleNormalKey(ev)
 		}
 
 	case *tcell.EventMouse:
-		if u.Mode == ModeURLInput || u.Mode == ModeSearch || u.Mode == ModeWebSearch {
+		if u.Mode == ModeURLInput || u.Mode == ModeSearch || u.Mode == ModeWebSearch || u.Mode == ModeFormInput {
 			return ActionNone
 		}
 		u.handleMouseEvent(ev)
@@ -533,6 +547,9 @@ func (u *UI) handleInputKey(ev *tcell.EventKey, submitAction Action) Action {
 		u.Mode = ModeNormal
 		u.InputBuffer = ""
 		u.InputCursor = 0
+		u.InputPrompt = ""
+		u.formInputControl = -1
+		u.formInputMasked = false
 		return ActionNone
 
 	case tcell.KeyEnter:
@@ -892,6 +909,286 @@ func (u *UI) YankLinkURL() {
 	}
 
 	u.SetStatus("Yanked link: " + shortenStatusText(linkURL, 64))
+}
+
+// BeginControlEdit opens the top bar editor for editable form controls.
+func (u *UI) BeginControlEdit(controlIdx int) {
+	if u.Doc == nil || controlIdx < 0 || controlIdx >= len(u.Doc.Controls) {
+		u.SetStatus("No form control under cursor")
+		return
+	}
+
+	c := u.Doc.Controls[controlIdx]
+	if c.Disabled {
+		u.SetStatus("Control is disabled")
+		return
+	}
+	if c.ReadOnly {
+		u.SetStatus("Control is read-only")
+		return
+	}
+
+	switch c.Kind {
+	case "input":
+		switch c.Type {
+		case "text", "password", "search", "email", "url", "tel", "number":
+			// editable in top bar
+		default:
+			u.SetStatus("Control is not text-editable")
+			return
+		}
+	case "textarea", "select":
+		// editable in top bar
+	default:
+		u.SetStatus("Control is not text-editable")
+		return
+	}
+
+	u.Mode = ModeFormInput
+	u.formInputControl = controlIdx
+	u.formInputMasked = c.Kind == "input" && c.Type == "password"
+	u.InputPrompt = formInputPrompt(c)
+	u.InputBuffer = c.Value
+	if c.Kind == "select" {
+		u.InputBuffer = selectedOptionIndexes(c)
+		u.SetStatus(selectOptionsHint(c))
+	}
+	u.InputCursor = len(u.InputBuffer)
+}
+
+// ApplyFormInput commits the top-bar form editor buffer into the current control.
+func (u *UI) ApplyFormInput() (int, bool) {
+	if u.Doc == nil || u.formInputControl < 0 || u.formInputControl >= len(u.Doc.Controls) {
+		u.Mode = ModeNormal
+		u.formInputControl = -1
+		u.formInputMasked = false
+		return -1, false
+	}
+
+	idx := u.formInputControl
+	c := &u.Doc.Controls[idx]
+	changed := false
+
+	switch c.Kind {
+	case "input":
+		switch c.Type {
+		case "text", "password", "search", "email", "url", "tel", "number":
+			if c.Value != u.InputBuffer {
+				c.Value = u.InputBuffer
+				changed = true
+			}
+		}
+
+	case "textarea":
+		if c.Value != u.InputBuffer {
+			c.Value = u.InputBuffer
+			changed = true
+		}
+
+	case "select":
+		if applySelectInput(c, u.InputBuffer) {
+			changed = true
+		}
+	}
+
+	if changed {
+		u.refreshControlSpan(idx)
+		u.SetStatus("Updated form field")
+	}
+
+	u.Mode = ModeNormal
+	u.InputPrompt = ""
+	u.InputBuffer = ""
+	u.InputCursor = 0
+	u.formInputControl = -1
+	u.formInputMasked = false
+
+	return idx, changed
+}
+
+// ToggleControl toggles checkbox/radio controls and updates rendering.
+func (u *UI) ToggleControl(controlIdx int) bool {
+	if u.Doc == nil || controlIdx < 0 || controlIdx >= len(u.Doc.Controls) {
+		return false
+	}
+	c := &u.Doc.Controls[controlIdx]
+	if c.Disabled {
+		u.SetStatus("Control is disabled")
+		return false
+	}
+	if c.Kind != "input" {
+		return false
+	}
+
+	switch c.Type {
+	case "checkbox":
+		c.Checked = !c.Checked
+		u.refreshControlSpan(controlIdx)
+		u.SetStatus("Toggled checkbox")
+		return true
+
+	case "radio":
+		formIdx := c.FormIdx
+		name := c.Name
+		for i := range u.Doc.Controls {
+			oc := &u.Doc.Controls[i]
+			if oc.Kind == "input" && oc.Type == "radio" && oc.FormIdx == formIdx && oc.Name == name {
+				oc.Checked = i == controlIdx
+				u.refreshControlSpan(i)
+			}
+		}
+		u.SetStatus("Selected radio option")
+		return true
+	}
+
+	return false
+}
+
+func (u *UI) refreshControlSpan(controlIdx int) {
+	if u.Doc == nil || controlIdx < 0 || controlIdx >= len(u.Doc.Controls) {
+		return
+	}
+
+	c := &u.Doc.Controls[controlIdx]
+	if c.Line < 0 || c.Line >= len(u.Doc.Lines) {
+		return
+	}
+
+	newText := render.ControlDisplayText(*c)
+	line := &u.Doc.Lines[c.Line]
+	for i := range line.Spans {
+		if line.Spans[i].ControlIdx == controlIdx {
+			line.Spans[i].Text = newText
+			c.Width = runewidth.StringWidth(newText)
+			return
+		}
+	}
+}
+
+func formInputPrompt(c render.Control) string {
+	name := strings.TrimSpace(c.Name)
+	if name == "" {
+		name = c.Type
+	}
+	if c.Kind == "select" {
+		if c.Multiple {
+			return "select (comma indexes): "
+		}
+		return "select (index): "
+	}
+	if c.Kind == "textarea" {
+		return "textarea " + name + ": "
+	}
+	return "field " + name + ": "
+}
+
+func selectedOptionIndexes(c render.Control) string {
+	if len(c.Options) == 0 {
+		return ""
+	}
+	idxs := make([]string, 0, len(c.Options))
+	for i, opt := range c.Options {
+		if opt.Selected {
+			idxs = append(idxs, strconv.Itoa(i+1))
+		}
+	}
+	return strings.Join(idxs, ",")
+}
+
+func selectOptionsHint(c render.Control) string {
+	if len(c.Options) == 0 {
+		return "No select options"
+	}
+	parts := make([]string, 0, len(c.Options))
+	for i, opt := range c.Options {
+		label := strings.TrimSpace(opt.Label)
+		if label == "" {
+			label = strings.TrimSpace(opt.Value)
+		}
+		if label == "" {
+			label = "(empty)"
+		}
+		parts = append(parts, fmt.Sprintf("%d:%s", i+1, shortenStatusText(label, 18)))
+	}
+	return "Options " + strings.Join(parts, " ")
+}
+
+func applySelectInput(c *render.Control, input string) bool {
+	if c == nil || c.Kind != "select" {
+		return false
+	}
+	before := render.ControlDisplayText(*c)
+
+	raw := strings.TrimSpace(input)
+	if raw == "" {
+		for i := range c.Options {
+			c.Options[i].Selected = false
+		}
+		if len(c.Options) > 0 && !c.Multiple {
+			c.Options[0].Selected = true
+		}
+	} else {
+		for i := range c.Options {
+			c.Options[i].Selected = false
+		}
+
+		parts := strings.Split(raw, ",")
+		selectedAny := false
+		for _, part := range parts {
+			p := strings.TrimSpace(part)
+			if p == "" {
+				continue
+			}
+			if idx, err := strconv.Atoi(p); err == nil {
+				if idx >= 1 && idx <= len(c.Options) {
+					if !c.Options[idx-1].Disabled {
+						c.Options[idx-1].Selected = true
+						selectedAny = true
+						if !c.Multiple {
+							break
+						}
+					}
+				}
+			}
+		}
+
+		if !selectedAny {
+			needle := strings.ToLower(raw)
+			for i := range c.Options {
+				if c.Options[i].Disabled {
+					continue
+				}
+				if strings.EqualFold(c.Options[i].Label, needle) || strings.EqualFold(c.Options[i].Value, needle) {
+					c.Options[i].Selected = true
+					selectedAny = true
+					if !c.Multiple {
+						break
+					}
+				}
+			}
+		}
+
+		if !selectedAny && len(c.Options) > 0 && !c.Multiple {
+			c.Options[0].Selected = true
+		}
+	}
+
+	vals := make([]string, 0, len(c.Options))
+	for _, opt := range c.Options {
+		if opt.Selected {
+			vals = append(vals, opt.Value)
+		}
+	}
+	if c.Multiple {
+		c.Value = strings.Join(vals, ",")
+	} else if len(vals) > 0 {
+		c.Value = vals[0]
+	} else {
+		c.Value = ""
+	}
+
+	after := render.ControlDisplayText(*c)
+	return before != after
 }
 
 func shortenStatusText(s string, maxRunes int) string {
