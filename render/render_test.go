@@ -196,6 +196,23 @@ func TestTableLinkDoesNotStartWithSpace(t *testing.T) {
 	}
 }
 
+func TestLinkLeadingWhitespaceTrimmed(t *testing.T) {
+	html := `<html><body><p>Hello <a href="/u"> world</a></p></body></html>`
+	doc := Render([]byte(html), "https://example.com", 120)
+
+	if !strings.Contains(docText(doc), "Hello world") {
+		t.Fatalf("expected single-space separation before link text, got: %q", docText(doc))
+	}
+
+	for _, line := range doc.Lines {
+		for _, span := range line.Spans {
+			if span.LinkIdx >= 0 && strings.HasPrefix(span.Text, " ") {
+				t.Fatalf("link span should not start with whitespace: %q", span.Text)
+			}
+		}
+	}
+}
+
 func TestRenderHR(t *testing.T) {
 	html := `<html><body><p>Above</p><hr><p>Below</p></body></html>`
 	doc := Render([]byte(html), "http://example.com", 80)

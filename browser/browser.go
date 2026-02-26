@@ -481,14 +481,14 @@ func (b *Browser) openImage(imgURL string) {
 		}
 	}()
 
-	// Ensure viewer output starts cleanly on a fresh line.
-	fmt.Print("\n")
+	// Ensure viewer output starts at column 0 on a fresh line.
+	fmt.Print("\r\n")
 	if err := cmd.Run(); err != nil {
 		fmt.Printf("Viewer error: %v\n", err)
 	}
 
 	// Pause so the user can see the image before tcell takes over again.
-	fmt.Print("\nPress Enter to return to wez...")
+	fmt.Print("\r\nPress Enter to return to wez...")
 	reader := bufio.NewReader(os.Stdin)
 	_, _ = reader.ReadBytes('\n')
 

@@ -130,11 +130,20 @@ func (u *UI) Suspend() {
 	}
 	u.Screen.HideCursor()
 	u.Screen.DisableMouse()
-	u.Screen.Fini()
+	if err := u.Screen.Suspend(); err != nil {
+		u.Screen.Fini()
+	}
 }
 
 // Resume reacquires terminal control after Suspend.
 func (u *UI) Resume() error {
+	if u.Screen != nil {
+		if err := u.Screen.Resume(); err == nil {
+			u.Screen.EnableMouse()
+			return nil
+		}
+	}
+
 	newScreen, err := tcell.NewScreen()
 	if err != nil {
 		return fmt.Errorf("creating screen: %w", err)

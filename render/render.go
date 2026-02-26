@@ -557,6 +557,12 @@ func (r *renderer) handleLink(n *html.Node) {
 		return
 	}
 
+	// If spacing was pending before the <a>, emit it outside link styling.
+	if r.pendingSpace && r.curCol > r.indent {
+		r.pendingSpace = false
+		r.appendToLine(" ")
+	}
+
 	// Resolve relative URL.
 	resolved := r.resolveURL(href)
 
@@ -571,15 +577,18 @@ func (r *renderer) handleLink(n *html.Node) {
 	oldColor := r.color
 	oldUnderline := r.underline
 	oldLinkIdx := r.curLinkIdx
+	oldSuppressLeadingSpace := r.suppressLeadingSpace
 	r.color = "link"
 	r.underline = true
 	r.curLinkIdx = linkIdx
+	r.suppressLeadingSpace = true
 
 	r.walkChildren(n)
 
 	r.color = oldColor
 	r.underline = oldUnderline
 	r.curLinkIdx = oldLinkIdx
+	r.suppressLeadingSpace = oldSuppressLeadingSpace
 }
 
 func (r *renderer) handleNoscript(n *html.Node) {
