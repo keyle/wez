@@ -12,7 +12,7 @@ import (
 	"github.com/gdamore/tcell/v2"
 )
 
-const Version = "1.7"
+const Version = "1.8"
 
 type Config struct {
 	ImageViewer           string      `toml:"image_viewer"`

@@ -38,21 +38,32 @@
 <p class="Pp"><b>wez</b> [<i>URL</i>]</p>
 <p class="Pp"><b>wez</b> <b>--version</b></p>
 <p class="Pp"><b>wez</b> <b>-v</b></p>
+<p class="Pp"><b>wez</b> <b>--dump</b> <i>URL</i></p>
 </section>
 <section class="Sh">
 <h1 class="Sh" id="DESCRIPTION"><a class="permalink" href="#DESCRIPTION">DESCRIPTION</a></h1>
 <p class="Pp">wez is a modern, keyboard-driven terminal web browser.</p>
 <p class="Pp">It focuses on readable output and fast navigation: basic HTML
     rendering, vim-style movement, link following, in-page search, external
-    image viewing, downloads for binary responses, clipboard yanking, and
-    configurable keymaps.</p>
+    image viewing, downloads for binary responses, clipboard yanking, simple
+    HTML form interaction, favorites with categories, and configurable
+  keymaps.</p>
 <p class="Pp">JavaScript is not executed. Search engines that require JavaScript
     (for example Google Search) are not supported.</p>
+<p class="Pp">Form support includes text/password fields, textarea, select
+    (single/multiple), checkboxes/radios, and submit buttons. Text-like controls
+    are edited in the action bar.</p>
+<p class="Pp">Cookies are persisted by default in `~/.cache/wez/cookies.json` so
+    logins can survive restarts.</p>
 </section>
 <section class="Sh">
 <h1 class="Sh" id="OPTIONS"><a class="permalink" href="#OPTIONS">OPTIONS</a></h1>
 <p class="Pp"><b>--version</b>, <b>-v</b></p>
 <div class="Bd-indent">Print version and exit.</div>
+<p class="Pp"><b>--dump</b> <i>URL</i></p>
+<div class="Bd-indent">Fetch and render <i>URL</i> to stdout without starting
+  the TUI. Output is plain text in the same rendered layout style used in
+  wez.</div>
 <p class="Pp">URL</p>
 <div class="Bd-indent">Optional URL (or hostname) to open at startup.</div>
 </section>
@@ -103,6 +114,9 @@
 <p class="Pp">Print version:</p>
 <p class="Pp"></p>
 <div class="Bd-indent">wez --version</div>
+<p class="Pp">Dump rendered page content to stdout:</p>
+<p class="Pp"></p>
+<div class="Bd-indent">wez --dump https://example.com</div>
 </section>
 <section class="Sh">
 <h1 class="Sh" id="KEY_BINDINGS"><a class="permalink" href="#KEY_BINDINGS">KEY
@@ -115,13 +129,20 @@
   <li>`j` / `k` - scroll down / up</li>
   <li>`h` / `l` - move cursor left / right</li>
   <li>`gg` / `G` - jump top / bottom</li>
-  <li>`Ctrl-F` / `Ctrl-B` - page down / up</li>
+  <li>`Ctrl-F` / `PgUp` - page down / up</li>
   <li>`d` / `u` - half-page down / up</li>
-  <li>`Tab` / `Shift-Tab` - next / previous link</li>
-  <li>`Enter` - follow link under cursor</li>
-  <li>`b` / `B` / `H` / `Backspace` - back</li>
-  <li>`L` - forward</li>
+  <li>`Tab` / `Shift-Tab` - next / previous focus target (link or form
+    control)</li>
+  <li>`Enter` - activate link/control under cursor</li>
+  <li>`b` / `B` / `Backspace` - back</li>
+  <li>`Ctrl-W` - open welcome page</li>
+  <li>`Ctrl-H` - open history view (Esc to return)</li>
+  <li>`Ctrl-B` - open bookmarks view (Esc to return)</li>
+  <li>`Ctrl-U` - show page source (Esc to return)</li>
+  <li>`f` / `F` - forward</li>
   <li>`r` / `R` - reload</li>
+  <li>`za` / `zd` - add / remove favorite</li>
+  <li>`zc` / `zh` - clear cache / clear history</li>
   <li>`/` then `n` / `N` - search, next / previous match</li>
   <li>`i` - open image under cursor (external viewer)</li>
   <li>`v` / `V` - visual / visual-line selection</li>
@@ -149,10 +170,31 @@ Key bindings (auto-created with defaults).
 <p class="Pp"></p>
 <dl class="Bl-tag">
   <dt>&#x2022;</dt>
+  <dd>`~/.config/wez/fav.json`</dd>
+</dl>
+<div class="Bd-indent"></div>
+Persisted favorites with 1-level categories.
+<p class="Pp"></p>
+<dl class="Bl-tag">
+  <dt>&#x2022;</dt>
   <dd>`~/.cache/wez/history`</dd>
 </dl>
 <div class="Bd-indent"></div>
 Persisted browsing history.
+<p class="Pp"></p>
+<dl class="Bl-tag">
+  <dt>&#x2022;</dt>
+  <dd>`~/.cache/wez/seen_urls`</dd>
+</dl>
+<div class="Bd-indent"></div>
+Persisted set of visited URLs for visited-link coloring.
+<p class="Pp"></p>
+<dl class="Bl-tag">
+  <dt>&#x2022;</dt>
+  <dd>`~/.cache/wez/cookies.json`</dd>
+</dl>
+<div class="Bd-indent"></div>
+Persisted cookie jar (enabled by default).
 </section>
 <section class="Sh">
 <h1 class="Sh" id="AUTHORS"><a class="permalink" href="#AUTHORS">AUTHORS</a></h1>

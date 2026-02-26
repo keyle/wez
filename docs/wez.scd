@@ -112,7 +112,7 @@ Default normal-mode bindings (subset):
 - `Ctrl-H` - open history view (Esc to return)
 - `Ctrl-B` - open bookmarks view (Esc to return)
 - `Ctrl-U` - show page source (Esc to return)
-- `L` - forward
+- `f` / `F` - forward
 - `r` / `R` - reload
 - `za` / `zd` - add / remove favorite
 - `zc` / `zh` - clear cache / clear history

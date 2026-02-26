@@ -19,22 +19,37 @@ wez - modern terminal web browser
 .PP
 \fBwez\fR \fB-v\fR
 .PP
+\fBwez\fR \fB--dump\fR \fIURL\fR
+.PP
 .SH DESCRIPTION
 .PP
 wez is a modern, keyboard-driven terminal web browser.\&
 .PP
 It focuses on readable output and fast navigation: basic HTML rendering,
 vim-style movement, link following, in-page search, external image viewing,
-downloads for binary responses, clipboard yanking, and configurable keymaps.\&
+downloads for binary responses, clipboard yanking, simple HTML form interaction,
+favorites with categories,
+and configurable keymaps.\&
 .PP
 JavaScript is not executed.\&
 Search engines that require JavaScript (for example Google Search) are not supported.\&
+.PP
+Form support includes text/password fields, textarea, select (single/multiple),
+checkboxes/radios, and submit buttons.\& Text-like controls are edited in the action bar.\&
+.PP
+Cookies are persisted by default in `~/.\&cache/wez/cookies.\&json` so logins can survive restarts.\&
 .PP
 .SH OPTIONS
 .PP
 \fB--version\fR, \fB-v\fR
 .RS 4
 Print version and exit.\&
+.PP
+.RE
+\fB--dump\fR \fIURL\fR
+.RS 4
+Fetch and render \fIURL\fR to stdout without starting the TUI.\&
+Output is plain text in the same rendered layout style used in wez.\&
 .PP
 .RE
 URL
@@ -114,6 +129,12 @@ Print version:
 wez --version
 .PP
 .RE
+Dump rendered page content to stdout:
+.PP
+.RS 4
+wez --dump https://example.\&com
+.PP
+.RE
 .SH KEY BINDINGS
 .PP
 Default normal-mode bindings (subset):
@@ -130,19 +151,31 @@ Default normal-mode bindings (subset):
 .IP \(bu 4
 `gg` / `G` - jump top / bottom
 .IP \(bu 4
-`Ctrl-F` / `Ctrl-B` - page down / up
+`Ctrl-F` / `PgUp` - page down / up
 .IP \(bu 4
 `d` / `u` - half-page down / up
 .IP \(bu 4
-`Tab` / `Shift-Tab` - next / previous link
+`Tab` / `Shift-Tab` - next / previous focus target (link or form control)
 .IP \(bu 4
-`Enter` - follow link under cursor
+`Enter` - activate link/control under cursor
 .IP \(bu 4
-`b` / `B` / `H` / `Backspace` - back
+`b` / `B` / `Backspace` - back
 .IP \(bu 4
-`L` - forward
+`Ctrl-W` - open welcome page
+.IP \(bu 4
+`Ctrl-H` - open history view (Esc to return)
+.IP \(bu 4
+`Ctrl-B` - open bookmarks view (Esc to return)
+.IP \(bu 4
+`Ctrl-U` - show page source (Esc to return)
+.IP \(bu 4
+`f` / `F` - forward
 .IP \(bu 4
 `r` / `R` - reload
+.IP \(bu 4
+`za` / `zd` - add / remove favorite
+.IP \(bu 4
+`zc` / `zh` - clear cache / clear history
 .IP \(bu 4
 `/` then `n` / `N` - search, next / previous match
 .IP \(bu 4
@@ -179,11 +212,35 @@ Key bindings (auto-created with defaults).\&
 .PP
 .PD 0
 .IP \(bu 4
+`~/.\&config/wez/fav.\&json`
+.RS 4
+.PD
+.RE
+Persisted favorites with 1-level categories.\&
+.PP
+.PD 0
+.IP \(bu 4
 `~/.\&cache/wez/history`
 .RS 4
 .PD
 .RE
 Persisted browsing history.\&
+.PP
+.PD 0
+.IP \(bu 4
+`~/.\&cache/wez/seen_urls`
+.RS 4
+.PD
+.RE
+Persisted set of visited URLs for visited-link coloring.\&
+.PP
+.PD 0
+.IP \(bu 4
+`~/.\&cache/wez/cookies.\&json`
+.RS 4
+.PD
+.RE
+Persisted cookie jar (enabled by default).\&
 .PP
 .SH AUTHORS
 .PP

@@ -78,7 +78,7 @@ func DefaultBindings() map[string][]string {
 		OpenFavorites:  {"Ctrl-B"},
 		OpenWelcome:    {"Ctrl-W"},
 		ShowSource:     {"Ctrl-U"},
-		Forward:        {"L"},
+		Forward:        {"f", "F"},
 		OpenURL:        {"o"},
 		OpenURLEdit:    {"O"},
 		FollowLink:     {"Enter"},
@@ -318,7 +318,7 @@ open_history_view = ["Ctrl-H"]
 open_favorites_view = ["Ctrl-B"]
 open_welcome   = ["Ctrl-W"]
 show_source    = ["Ctrl-U"]
-forward        = ["L"]
+forward        = ["f", "F"]
 open_url       = ["o"]
 open_url_edit  = ["O"]
 follow_link    = ["Enter"]

@@ -1613,7 +1613,7 @@ func (b *Browser) ShowWelcome() {
 		{Spans: []render.Span{{Text: "  Ctrl-H      Open history view (Esc to return)", LinkIdx: -1}}},
 		{Spans: []render.Span{{Text: "  Ctrl-B      Open bookmarks view (Esc to return)", LinkIdx: -1}}},
 		{Spans: []render.Span{{Text: "  Ctrl-U      Show page source (Esc to return)", LinkIdx: -1}}},
-		{Spans: []render.Span{{Text: "  L           Go forward", LinkIdx: -1}}},
+		{Spans: []render.Span{{Text: "  f / F       Go forward", LinkIdx: -1}}},
 		{Spans: []render.Span{{Text: "  r / R       Reload page", LinkIdx: -1}}},
 		{Spans: []render.Span{{Text: "  za / zd     Add / remove favorite", LinkIdx: -1}}},
 		{Spans: []render.Span{{Text: "  zc / zh     Clear cache / clear history", LinkIdx: -1}}},

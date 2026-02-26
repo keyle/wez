@@ -59,6 +59,30 @@ func TestBackIncludesBKeys(t *testing.T) {
 	}
 }
 
+func TestForwardUsesFKeys(t *testing.T) {
+	defaults := DefaultBindings()
+	forwardKeys := defaults[Forward]
+
+	has := func(key string) bool {
+		for _, k := range forwardKeys {
+			if k == key {
+				return true
+			}
+		}
+		return false
+	}
+
+	if !has("f") {
+		t.Error("expected 'f' in forward bindings")
+	}
+	if !has("F") {
+		t.Error("expected 'F' in forward bindings")
+	}
+	if has("L") {
+		t.Error("expected 'L' removed from forward bindings")
+	}
+}
+
 func TestNewDefaultKeymap(t *testing.T) {
 	km := New()
 
@@ -87,6 +111,18 @@ func TestNewDefaultKeymap(t *testing.T) {
 	action, _ = km.Resolve("", "B")
 	if action != Back {
 		t.Errorf("expected 'B' -> back, got %q", action)
+	}
+
+	// f -> forward.
+	action, _ = km.Resolve("", "f")
+	if action != Forward {
+		t.Errorf("expected 'f' -> forward, got %q", action)
+	}
+
+	// F -> forward.
+	action, _ = km.Resolve("", "F")
+	if action != Forward {
+		t.Errorf("expected 'F' -> forward, got %q", action)
 	}
 }
 
