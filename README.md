@@ -42,7 +42,9 @@ these files are auto created on first start.
 
 ## Method
 
-Much of this repo was built using agentic coding, with opencode. First pass with Opus 4.6 on high, then Codex 5.3 on high/xhigh. I could hand-write it all but it does it faster than me and never gets tired. I do read and take ownership of the code. If you see slop, it's my fault!
+Much of this repo was built using agentic coding, with `Opencode`. First pass with `Opus 4.6` on `high`, then `Codex 5.3` on `high/xhigh`. 
+
+I could hand-write it all but it does it faster than me and never gets tired. I _do_ read and take ownership of the code. If you see slop, it's my fault!
 
 ## License
 
