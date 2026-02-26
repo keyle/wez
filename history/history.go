@@ -71,6 +71,13 @@ func (h *History) Add(url, title string) error {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 
+	// Keep history readable by avoiding immediate duplicates.
+	if n := len(h.entries); n > 0 {
+		if h.entries[n-1].URL == url {
+			return nil
+		}
+	}
+
 	entry := Entry{
 		URL:       url,
 		Title:     title,

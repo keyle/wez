@@ -102,3 +102,38 @@ func TestHistoryClear(t *testing.T) {
 		t.Fatal("expected in-memory history to be empty after clear")
 	}
 }
+
+func TestHistorySkipsConsecutiveDuplicates(t *testing.T) {
+	tmpDir := t.TempDir()
+	h := &History{path: filepath.Join(tmpDir, "history")}
+
+	if err := h.Add("http://example.com", "Example"); err != nil {
+		t.Fatal(err)
+	}
+	if err := h.Add("http://example.com", "Example again"); err != nil {
+		t.Fatal(err)
+	}
+	if err := h.Add("http://golang.org", "Go"); err != nil {
+		t.Fatal(err)
+	}
+	if err := h.Add("http://example.com", "Example later"); err != nil {
+		t.Fatal(err)
+	}
+
+	entries := h.Entries()
+	if len(entries) != 3 {
+		t.Fatalf("expected 3 entries after skipping consecutive duplicate, got %d", len(entries))
+	}
+	if entries[0].URL != "http://example.com" || entries[1].URL != "http://golang.org" || entries[2].URL != "http://example.com" {
+		t.Fatalf("unexpected history order: %#v", entries)
+	}
+
+	h2 := &History{path: filepath.Join(tmpDir, "history")}
+	if err := h2.Load(); err != nil {
+		t.Fatal(err)
+	}
+	loaded := h2.Entries()
+	if len(loaded) != 3 {
+		t.Fatalf("expected 3 loaded entries, got %d", len(loaded))
+	}
+}
