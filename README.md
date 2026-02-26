@@ -27,9 +27,9 @@ make install
 ## Usage
 
 ```bash
-./wez
-./wez news.ycombinator.com
-./wez --dump https://example.com
+wez
+wez news.ycombinator.com
+wez --dump https://example.com
 ```
 
 ## Config
