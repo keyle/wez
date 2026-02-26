@@ -23,8 +23,14 @@ func TestDefault(t *testing.T) {
 	if cfg.SearchEngine != "duckduckgo" {
 		t.Errorf("expected default search engine 'duckduckgo', got %q", cfg.SearchEngine)
 	}
-	if cfg.Colors.StatusBarBg != "darkgray" {
-		t.Errorf("expected default status_bar_bg 'darkgray', got %q", cfg.Colors.StatusBarBg)
+	if !cfg.FollowMetaRedirects {
+		t.Error("expected follow_meta_redirects default true")
+	}
+	if cfg.Colors.StatusBar != "gray" {
+		t.Errorf("expected default status_bar 'gray', got %q", cfg.Colors.StatusBar)
+	}
+	if cfg.Colors.StatusBarBg != "black" {
+		t.Errorf("expected default status_bar_bg 'black', got %q", cfg.Colors.StatusBarBg)
 	}
 	if cfg.Colors.TopBar != "black" {
 		t.Errorf("expected default top_bar 'black', got %q", cfg.Colors.TopBar)
@@ -74,6 +80,9 @@ func TestAutoCreateConfig(t *testing.T) {
 	if !strings.Contains(string(content), "search_engine") {
 		t.Error("expected auto-created config to include search_engine")
 	}
+	if !strings.Contains(string(content), "follow_meta_redirects") {
+		t.Error("expected auto-created config to include follow_meta_redirects")
+	}
 	if !strings.Contains(string(content), "search_url_template") {
 		t.Error("expected auto-created config to include search_url_template")
 	}
@@ -108,6 +117,7 @@ func TestLoadFromFile(t *testing.T) {
 image_viewer = "feh %s"
 download_dir = "~/Downloads"
 search_engine = "google"
+follow_meta_redirects = false
 
 [colors]
 link = "cyan"
@@ -135,6 +145,9 @@ heading = "green"
 	}
 	if cfg.SearchEngine != "google" {
 		t.Errorf("expected search_engine google, got %q", cfg.SearchEngine)
+	}
+	if cfg.FollowMetaRedirects {
+		t.Error("expected follow_meta_redirects=false from config")
 	}
 	if got := cfg.SearchURL("terminal browser"); !strings.HasPrefix(got, "https://www.google.com/search?q=") {
 		t.Errorf("expected google search URL, got %q", got)

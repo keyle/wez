@@ -2,6 +2,7 @@ package browser
 
 import (
 	"bufio"
+	"bytes"
 	"fmt"
 	"mime"
 	"net/url"
@@ -9,8 +10,12 @@ import (
 	"os/exec"
 	"path"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"time"
+
+	"golang.org/x/net/html"
+	"golang.org/x/net/html/atom"
 
 	"wez/config"
 	"wez/fetch"
@@ -18,6 +23,12 @@ import (
 	"wez/keymap"
 	"wez/render"
 	"wez/ui"
+)
+
+var (
+	metaTagRe       = regexp.MustCompile(`(?is)<meta\b[^>]*>`)
+	contentAttrRe   = regexp.MustCompile(`(?is)\bcontent\s*=\s*("([^"]*)"|'([^']*)'|([^\s>]+))`)
+	httpEquivAttrRe = regexp.MustCompile(`(?is)\bhttp-equiv\s*=\s*("([^"]*)"|'([^']*)'|([^\s>]+))`)
 )
 
 // Browser ties all components together.
@@ -51,10 +62,36 @@ func New(cfg config.Config, km *keymap.Keymap) (*Browser, error) {
 
 // Navigate fetches and renders a URL.
 func (b *Browser) Navigate(rawURL string) {
+	const maxMetaRedirectHops = 8
+
 	result, err := b.fetchWithStatusAnimation(rawURL)
 	if err != nil {
 		b.showError(fmt.Sprintf("Error loading %s: %v", rawURL, err))
 		return
+	}
+
+	if b.Cfg.FollowMetaRedirects {
+		seen := map[string]bool{result.FinalURL: true}
+		for hops := 0; hops < maxMetaRedirectHops; hops++ {
+			if !isHTMLContentType(result.ContentType) {
+				break
+			}
+
+			nextURL, ok := extractMetaRefreshURL(result.Body, result.FinalURL)
+			if !ok || nextURL == "" {
+				break
+			}
+			if seen[nextURL] {
+				break
+			}
+			seen[nextURL] = true
+
+			result, err = b.fetchWithStatusAnimation(nextURL)
+			if err != nil {
+				b.showError(fmt.Sprintf("Error loading %s: %v", nextURL, err))
+				return
+			}
+		}
 	}
 
 	if shouldDownload(result.ContentType) {
@@ -254,8 +291,8 @@ func loadingFrame(step int) string {
 	}
 
 	bar := []rune("        ")
-	bar[pos] = '>'
-	return "[" + string(bar) + "]"
+	bar[pos] = '▓'
+	return "▌" + string(bar) + "▌"
 }
 
 func shortenForStatus(s string, maxRunes int) string {
@@ -267,6 +304,148 @@ func shortenForStatus(s string, maxRunes int) string {
 		return string(r[:maxRunes])
 	}
 	return string(r[:maxRunes-3]) + "..."
+}
+
+func isHTMLContentType(contentType string) bool {
+	ct := strings.ToLower(strings.TrimSpace(contentType))
+	if ct == "" {
+		return false
+	}
+	mediaType, _, err := mime.ParseMediaType(ct)
+	if err == nil {
+		ct = mediaType
+	}
+	return strings.Contains(ct, "text/html") || strings.Contains(ct, "application/xhtml")
+}
+
+func extractMetaRefreshURL(body []byte, baseURL string) (string, bool) {
+	doc, err := html.Parse(bytes.NewReader(body))
+	if err != nil {
+		return "", false
+	}
+
+	var out string
+	var walk func(*html.Node)
+	walk = func(n *html.Node) {
+		if n == nil || out != "" {
+			return
+		}
+
+		if n.Type == html.ElementNode && n.DataAtom == atom.Meta {
+			httpEquiv := getAttrInsensitive(n, "http-equiv")
+			if strings.EqualFold(strings.TrimSpace(httpEquiv), "refresh") {
+				if content := getAttrInsensitive(n, "content"); content != "" {
+					if rawTarget, ok := parseMetaRefreshContent(content); ok {
+						resolved := resolveAgainst(baseURL, rawTarget)
+						if resolved != "" {
+							out = resolved
+							return
+						}
+					}
+				}
+			}
+		}
+
+		for c := n.FirstChild; c != nil; c = c.NextSibling {
+			walk(c)
+		}
+	}
+
+	walk(doc)
+	if out == "" {
+		// Some pages place refresh meta tags inside <noscript>, which the HTML
+		// parser may treat as text. Fall back to a lightweight raw scan.
+		if rawTarget, ok := extractMetaRefreshURLRaw(body); ok {
+			resolved := resolveAgainst(baseURL, rawTarget)
+			if resolved != "" {
+				out = resolved
+			}
+		}
+	}
+
+	if out == "" {
+		return "", false
+	}
+	return out, true
+}
+
+func extractMetaRefreshURLRaw(body []byte) (string, bool) {
+	for _, tag := range metaTagRe.FindAllString(string(body), -1) {
+		httpEquiv := extractAttrValue(tag, httpEquivAttrRe)
+		if !strings.EqualFold(strings.TrimSpace(httpEquiv), "refresh") {
+			continue
+		}
+		content := extractAttrValue(tag, contentAttrRe)
+		if content == "" {
+			continue
+		}
+		if rawTarget, ok := parseMetaRefreshContent(content); ok {
+			return rawTarget, true
+		}
+	}
+
+	return "", false
+}
+
+func extractAttrValue(tag string, re *regexp.Regexp) string {
+	m := re.FindStringSubmatch(tag)
+	if len(m) == 0 {
+		return ""
+	}
+	for i := 2; i <= 4 && i < len(m); i++ {
+		if m[i] != "" {
+			return strings.TrimSpace(m[i])
+		}
+	}
+	return ""
+}
+
+func parseMetaRefreshContent(content string) (string, bool) {
+	parts := strings.Split(content, ";")
+	for _, part := range parts {
+		p := strings.TrimSpace(part)
+		if len(p) < 4 {
+			continue
+		}
+		if strings.EqualFold(p[:4], "url=") {
+			u := strings.TrimSpace(p[4:])
+			u = strings.Trim(u, "\"'")
+			if u != "" {
+				return u, true
+			}
+		}
+	}
+	return "", false
+}
+
+func resolveAgainst(baseURL, ref string) string {
+	ref = strings.TrimSpace(ref)
+	if ref == "" {
+		return ""
+	}
+
+	r, err := url.Parse(ref)
+	if err != nil {
+		return ""
+	}
+	if r.Scheme != "" && r.Scheme != "http" && r.Scheme != "https" {
+		return ""
+	}
+
+	b, err := url.Parse(baseURL)
+	if err != nil {
+		return ref
+	}
+	return b.ResolveReference(r).String()
+}
+
+func getAttrInsensitive(n *html.Node, key string) string {
+	for _, a := range n.Attr {
+		if strings.EqualFold(a.Key, key) {
+			return a.Val
+		}
+	}
+	return ""
 }
 
 func shouldDownload(contentType string) bool {

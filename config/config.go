@@ -15,12 +15,13 @@ import (
 const Version = "1.0"
 
 type Config struct {
-	ImageViewer   string      `toml:"image_viewer"`
-	MailtoHandler string      `toml:"mailto_handler"`
-	DownloadDir   string      `toml:"download_dir"`
-	SearchEngine  string      `toml:"search_engine"`
-	SearchURLTmpl string      `toml:"search_url_template"`
-	Colors        ColorConfig `toml:"colors"`
+	ImageViewer         string      `toml:"image_viewer"`
+	MailtoHandler       string      `toml:"mailto_handler"`
+	DownloadDir         string      `toml:"download_dir"`
+	FollowMetaRedirects bool        `toml:"follow_meta_redirects"`
+	SearchEngine        string      `toml:"search_engine"`
+	SearchURLTmpl       string      `toml:"search_url_template"`
+	Colors              ColorConfig `toml:"colors"`
 }
 
 type ColorConfig struct {
@@ -41,11 +42,12 @@ type ColorConfig struct {
 
 func Default() Config {
 	return Config{
-		ImageViewer:   "viu %s",
-		MailtoHandler: "open mailto:%s",
-		DownloadDir:   defaultDownloadDir(),
-		SearchEngine:  "duckduckgo",
-		SearchURLTmpl: "",
+		ImageViewer:         "viu %s",
+		MailtoHandler:       "open mailto:%s",
+		DownloadDir:         defaultDownloadDir(),
+		FollowMetaRedirects: true,
+		SearchEngine:        "duckduckgo",
+		SearchURLTmpl:       "",
 		Colors: ColorConfig{
 			Link:        "blue",
 			VisitedLink: "purple",
@@ -58,8 +60,8 @@ func Default() Config {
 			HRule:       "gray",
 			TopBar:      "black",
 			TopBarBg:    "white",
-			StatusBar:   "white",
-			StatusBarBg: "darkgray",
+			StatusBar:   "gray",
+			StatusBarBg: "black",
 		},
 	}
 }
@@ -349,6 +351,10 @@ mailto_handler = "open mailto:%%s"
 # Directory where downloaded binary files (e.g. PDF, ZIP) are saved.
 download_dir = %q
 
+# Follow HTML meta-refresh redirects (including ones inside <noscript>),
+# similar to text browsers like w3m/lynx.
+follow_meta_redirects = %t
+
 # Search engine used by the web-search prompt (Ctrl-O by default).
 # Built-in options: ddg, duckduckgo, google, bing, yahoo, brave,
 # ecosia, startpage, qwant
@@ -373,7 +379,7 @@ image       = "yellow"
 hrule       = "gray"
 top_bar     = "black"
 top_bar_bg  = "white"
-status_bar  = "white"
-status_bar_bg = "darkgray"
-`, shortHome(cfg.DownloadDir), cfg.SearchEngine, cfg.SearchURLTmpl)
+status_bar  = "gray"
+status_bar_bg = "black"
+`, shortHome(cfg.DownloadDir), cfg.FollowMetaRedirects, cfg.SearchEngine, cfg.SearchURLTmpl)
 }
