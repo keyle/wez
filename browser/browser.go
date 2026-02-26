@@ -584,14 +584,7 @@ func (b *Browser) openMailto(mailtoURL string) {
 	// Strip "mailto:" prefix to get the email address.
 	email := strings.TrimPrefix(mailtoURL, "mailto:")
 
-	var cmdStr string
-	if strings.Contains(handler, "%s") {
-		cmdStr = strings.Replace(handler, "%s", email, 1)
-	} else {
-		cmdStr = handler + " " + email
-	}
-
-	parts := strings.Fields(cmdStr)
+	parts := buildCommandArgs(handler, email)
 	if len(parts) == 0 {
 		return
 	}
@@ -640,15 +633,7 @@ func (b *Browser) openImage(imgURL string) {
 	}
 
 	// Build viewer command.
-	viewer := b.Cfg.ImageViewer
-	var cmdStr string
-	if strings.Contains(viewer, "%s") {
-		cmdStr = strings.Replace(viewer, "%s", tmpFile, 1)
-	} else {
-		cmdStr = viewer + " " + tmpFile
-	}
-
-	parts := strings.Fields(cmdStr)
+	parts := buildCommandArgs(b.Cfg.ImageViewer, tmpFile)
 	if len(parts) == 0 {
 		return
 	}
@@ -680,6 +665,21 @@ func (b *Browser) openImage(imgURL string) {
 	b.UI.SetStatus("")
 }
 
+func buildCommandArgs(template, arg string) []string {
+	template = strings.TrimSpace(template)
+	if template == "" {
+		return nil
+	}
+
+	if strings.Contains(template, "%s") {
+		template = strings.Replace(template, "%s", arg, 1)
+	} else {
+		template = template + " " + arg
+	}
+
+	return strings.Fields(template)
+}
+
 // ShowWelcome displays a welcome page when no URL is provided.
 func (b *Browser) ShowWelcome() {
 	doc := &render.Document{
@@ -703,7 +703,7 @@ func (b *Browser) ShowWelcome() {
 			{Spans: []render.Span{{Text: "  Enter       Follow link under cursor", LinkIdx: -1}}},
 			{Spans: []render.Span{{Text: "  b / B / H   Go back", LinkIdx: -1}}},
 			{Spans: []render.Span{{Text: "  L           Go forward", LinkIdx: -1}}},
-			{Spans: []render.Span{{Text: "  r           Reload page", LinkIdx: -1}}},
+			{Spans: []render.Span{{Text: "  r / R       Reload page", LinkIdx: -1}}},
 			{Spans: []render.Span{{Text: "  /           Search in page", LinkIdx: -1}}},
 			{Spans: []render.Span{{Text: "  Ctrl-o      Search web", LinkIdx: -1}}},
 			{Spans: []render.Span{{Text: "  n / N       Next / previous search match", LinkIdx: -1}}},

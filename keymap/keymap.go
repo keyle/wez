@@ -74,7 +74,7 @@ func DefaultBindings() map[string][]string {
 		SearchWeb:    {"Ctrl-O"},
 		SearchNext:   {"n"},
 		SearchPrev:   {"N"},
-		Reload:       {"r"},
+		Reload:       {"r", "R"},
 		OpenImage:    {"i"},
 		YankURL:      {"y"},
 		VisualMode:   {"v"},
@@ -289,7 +289,7 @@ search         = ["/"]
 search_web     = ["Ctrl-O"]
 search_next    = ["n"]
 search_prev    = ["N"]
-reload         = ["r"]
+reload         = ["r", "R"]
 open_image     = ["i"]
 yank_url       = ["y"]
 visual_mode    = ["v"]

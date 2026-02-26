@@ -170,6 +170,12 @@ func TestSpecialKeyBindings(t *testing.T) {
 	if action != Back {
 		t.Errorf("expected Backspace -> back, got %q", action)
 	}
+
+	// R -> reload (alias for r).
+	action, _ = km.Resolve("", "R")
+	if action != Reload {
+		t.Errorf("expected R -> reload, got %q", action)
+	}
 }
 
 func TestUnboundKey(t *testing.T) {
