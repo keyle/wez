@@ -135,13 +135,15 @@ func (u *UI) Suspend() {
 
 // Resume reacquires terminal control after Suspend.
 func (u *UI) Resume() error {
-	if u.Screen == nil {
-		return nil
+	newScreen, err := tcell.NewScreen()
+	if err != nil {
+		return fmt.Errorf("creating screen: %w", err)
 	}
-	if err := u.Screen.Init(); err != nil {
+	if err := newScreen.Init(); err != nil {
 		return err
 	}
-	u.Screen.EnableMouse()
+	newScreen.EnableMouse()
+	u.Screen = newScreen
 	return nil
 }
 
@@ -205,9 +207,6 @@ func (u *UI) Draw() {
 						rw = 1
 					}
 					drawStyle := style
-					if r == ' ' && span.Style.Underline {
-						drawStyle = drawStyle.Underline(false)
-					}
 					if u.isSelectedCell(docLine, x) {
 						drawStyle = drawStyle.Reverse(true)
 					}
@@ -233,9 +232,6 @@ func (u *UI) Draw() {
 					style = tcell.StyleDefault
 				}
 				style = style.Reverse(true).Bold(true)
-				if mainc == ' ' {
-					style = style.Underline(false)
-				}
 				u.Screen.SetContent(u.CursorX, screenRow, mainc, combc, style)
 			}
 		}

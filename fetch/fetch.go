@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 )
@@ -18,9 +19,25 @@ type Result struct {
 }
 
 func Fetch(rawURL string) (*Result, error) {
-	// Normalise URL: add https:// if no scheme present.
-	if !strings.Contains(rawURL, "://") {
-		rawURL = "https://" + rawURL
+	rawURL = strings.TrimSpace(rawURL)
+	if rawURL == "" {
+		return nil, fmt.Errorf("empty URL")
+	}
+
+	parsed, err := url.Parse(rawURL)
+	if err != nil {
+		return nil, fmt.Errorf("invalid URL %q: %w", rawURL, err)
+	}
+
+	// Normalize URL: add https:// if no scheme was provided.
+	if parsed.Scheme == "" {
+		if strings.HasPrefix(rawURL, "//") {
+			rawURL = "https:" + rawURL
+		} else {
+			rawURL = "https://" + rawURL
+		}
+	} else if parsed.Scheme != "http" && parsed.Scheme != "https" {
+		return nil, fmt.Errorf("unsupported URL scheme: %s", parsed.Scheme)
 	}
 
 	transport := &http.Transport{

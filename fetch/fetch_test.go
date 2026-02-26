@@ -123,3 +123,23 @@ func TestFetch404(t *testing.T) {
 		t.Errorf("expected status 404, got %d", result.StatusCode)
 	}
 }
+
+func TestFetchUnsupportedScheme(t *testing.T) {
+	_, err := Fetch("data:image/png;base64,AAAA")
+	if err == nil {
+		t.Fatal("expected error for unsupported scheme")
+	}
+	if !strings.Contains(err.Error(), "unsupported URL scheme") {
+		t.Fatalf("expected unsupported scheme error, got: %v", err)
+	}
+}
+
+func TestFetchEmptyURL(t *testing.T) {
+	_, err := Fetch("   ")
+	if err == nil {
+		t.Fatal("expected error for empty URL")
+	}
+	if !strings.Contains(err.Error(), "empty URL") {
+		t.Fatalf("expected empty URL error, got: %v", err)
+	}
+}
