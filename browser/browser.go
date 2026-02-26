@@ -1428,7 +1428,7 @@ func buildCommandArgs(template, arg string) []string {
 // ShowWelcome displays a welcome page when no URL is provided.
 func (b *Browser) ShowWelcome() {
 	doc := &render.Document{
-		Title: "wez - terminal web browser",
+		Title: "",
 		URL:   aboutWelcomeURL,
 		Lines: []render.Line{
 			{Spans: []render.Span{{Text: "wez " + config.Version, Style: render.SpanStyle{Bold: true, Color: "heading"}, LinkIdx: -1}}},
@@ -1436,7 +1436,7 @@ func (b *Browser) ShowWelcome() {
 			{},
 			{Spans: []render.Span{{Text: "Keybindings:", Style: render.SpanStyle{Bold: true}, LinkIdx: -1}}},
 			{},
-			{Spans: []render.Span{{Text: "  o / O       Open URL bar (O pre-fills current URL)", LinkIdx: -1}}},
+			{Spans: []render.Span{{Text: "  o / O       Open action bar (URL input; O pre-fills)", LinkIdx: -1}}},
 			{Spans: []render.Span{{Text: "  j / k       Scroll down / up", LinkIdx: -1}}},
 			{Spans: []render.Span{{Text: "  h / l       Move cursor left / right", LinkIdx: -1}}},
 			{Spans: []render.Span{{Text: "  gg / G      Go to top / bottom", LinkIdx: -1}}},

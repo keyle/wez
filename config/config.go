@@ -12,7 +12,7 @@ import (
 	"github.com/gdamore/tcell/v2"
 )
 
-const Version = "1.4"
+const Version = "1.5"
 
 type Config struct {
 	ImageViewer           string      `toml:"image_viewer"`
@@ -37,8 +37,8 @@ type ColorConfig struct {
 	BlockQuote  string `toml:"blockquote"`
 	Image       string `toml:"image"`
 	HRule       string `toml:"hrule"`
-	TopBar      string `toml:"top_bar"`
-	TopBarBg    string `toml:"top_bar_bg"`
+	ActionBar   string `toml:"action_bar"`
+	ActionBarBg string `toml:"action_bar_bg"`
 	StatusBar   string `toml:"status_bar"`
 	StatusBarBg string `toml:"status_bar_bg"`
 }
@@ -64,8 +64,8 @@ func Default() Config {
 			BlockQuote:  "teal",
 			Image:       "green",
 			HRule:       "gray",
-			TopBar:      "black",
-			TopBarBg:    "white",
+			ActionBar:   "black",
+			ActionBarBg: "white",
 			StatusBar:   "gray",
 			StatusBarBg: "black",
 		},
@@ -151,11 +151,11 @@ func applyColorDefaults(dst *ColorConfig, def ColorConfig) {
 	if dst.HRule == "" {
 		dst.HRule = def.HRule
 	}
-	if dst.TopBar == "" {
-		dst.TopBar = def.TopBar
+	if dst.ActionBar == "" {
+		dst.ActionBar = def.ActionBar
 	}
-	if dst.TopBarBg == "" {
-		dst.TopBarBg = def.TopBarBg
+	if dst.ActionBarBg == "" {
+		dst.ActionBarBg = def.ActionBarBg
 	}
 	if dst.StatusBar == "" {
 		dst.StatusBar = def.StatusBar
@@ -404,8 +404,8 @@ noscript_bg = "gray"
 blockquote  = "teal"
 image       = "green"
 hrule       = "gray"
-top_bar     = "black"
-top_bar_bg  = "white"
+action_bar  = "black"
+action_bar_bg = "white"
 status_bar  = "gray"
 status_bar_bg = "black"
 `, shortHome(cfg.DownloadDir), cfg.PersistCookies, shortHome(cfg.CookieJarPath), cfg.PersistSessionCookies, cfg.FollowMetaRedirects, cfg.SearchEngine, cfg.SearchURLTmpl)

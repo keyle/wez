@@ -42,8 +42,8 @@ func TestDefault(t *testing.T) {
 	if cfg.Colors.StatusBarBg != "black" {
 		t.Errorf("expected default status_bar_bg 'black', got %q", cfg.Colors.StatusBarBg)
 	}
-	if cfg.Colors.TopBar != "black" {
-		t.Errorf("expected default top_bar 'black', got %q", cfg.Colors.TopBar)
+	if cfg.Colors.ActionBar != "black" {
+		t.Errorf("expected default action_bar 'black', got %q", cfg.Colors.ActionBar)
 	}
 	if cfg.Colors.Link != "blue" {
 		t.Errorf("expected default link color 'blue', got %q", cfg.Colors.Link)
@@ -123,8 +123,8 @@ func TestAutoCreateConfig(t *testing.T) {
 	if !strings.Contains(string(content), "persist_session_cookies") {
 		t.Error("expected auto-created config to include persist_session_cookies")
 	}
-	if !strings.Contains(string(content), "top_bar_bg") {
-		t.Error("expected auto-created config to include top_bar_bg")
+	if !strings.Contains(string(content), "action_bar_bg") {
+		t.Error("expected auto-created config to include action_bar_bg")
 	}
 	if !strings.Contains(string(content), "status_bar_bg") {
 		t.Error("expected auto-created config to include status_bar_bg")

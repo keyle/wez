@@ -204,15 +204,19 @@ func (u *UI) Draw() {
 	u.Screen.Clear()
 	w, h := u.Screen.Size()
 
-	// Reserve rows: status bar is the last row, URL bar is the first when active.
+	// Reserve rows: status bar is last row; action bar is the row above it when active.
 	contentStart := 0
-	contentEnd := h - 1 // status bar
-
-	if u.Mode == ModeURLInput || u.Mode == ModeSearch || u.Mode == ModeWebSearch || u.Mode == ModeFormInput || u.Mode == ModeFavoriteCategory {
-		contentStart = 1
+	contentEnd := h - 1 // status bar starts here
+	actionBarY := -1
+	if u.showsActionBar() && h >= 2 {
+		actionBarY = h - 2
+		contentEnd = actionBarY
 	}
 
 	contentHeight := contentEnd - contentStart
+	if contentHeight < 0 {
+		contentHeight = 0
+	}
 	u.clampCursor()
 
 	// Draw content.
@@ -265,24 +269,24 @@ func (u *UI) Draw() {
 		}
 	}
 
-	// Draw URL bar / search bar if active.
-	if u.Mode == ModeURLInput || u.Mode == ModeSearch || u.Mode == ModeWebSearch || u.Mode == ModeFormInput || u.Mode == ModeFavoriteCategory {
+	// Draw action bar (URL/search/form input) if active.
+	if actionBarY >= 0 {
 		barStyle := tcell.StyleDefault.
-			Background(config.ParseColor(u.Cfg.Colors.TopBarBg)).
-			Foreground(config.ParseColor(u.Cfg.Colors.TopBar))
+			Background(config.ParseColor(u.Cfg.Colors.ActionBarBg)).
+			Foreground(config.ParseColor(u.Cfg.Colors.ActionBar))
 		for x := 0; x < w; x++ {
-			u.Screen.SetContent(x, 0, ' ', nil, barStyle)
+			u.Screen.SetContent(x, actionBarY, ' ', nil, barStyle)
 		}
 		prompt := u.InputPrompt
-		drawString(u.Screen, 0, 0, prompt, barStyle)
+		drawString(u.Screen, 0, actionBarY, prompt, barStyle)
 		inputText := u.InputBuffer
 		if u.Mode == ModeFormInput && u.formInputMasked {
 			inputText = strings.Repeat("*", len([]rune(u.InputBuffer)))
 		}
-		drawString(u.Screen, runewidth.StringWidth(prompt), 0, inputText, barStyle)
+		drawString(u.Screen, runewidth.StringWidth(prompt), actionBarY, inputText, barStyle)
 		cursorPos := runewidth.StringWidth(prompt) + u.InputCursor
 		if cursorPos < w {
-			u.Screen.ShowCursor(cursorPos, 0)
+			u.Screen.ShowCursor(cursorPos, actionBarY)
 		}
 	} else {
 		u.Screen.HideCursor()
@@ -373,7 +377,7 @@ func (u *UI) HandleEvent(ev tcell.Event) Action {
 		}
 
 	case *tcell.EventMouse:
-		if u.Mode == ModeURLInput || u.Mode == ModeSearch || u.Mode == ModeWebSearch || u.Mode == ModeFormInput || u.Mode == ModeFavoriteCategory {
+		if u.showsActionBar() {
 			return ActionNone
 		}
 		u.handleMouseEvent(ev)
@@ -413,11 +417,7 @@ func (u *UI) handleNormalKey(ev *tcell.EventKey) Action {
 }
 
 func (u *UI) executeAction(actionName string) Action {
-	_, h := u.Screen.Size()
-	contentHeight := h - 1
-	if u.Mode != ModeNormal {
-		contentHeight--
-	}
+	contentHeight := u.contentHeight()
 
 	maxScroll := 0
 	maxLine := 0
@@ -656,8 +656,7 @@ func (u *UI) handleInputKey(ev *tcell.EventKey, submitAction Action) Action {
 }
 
 func (u *UI) scroll(delta int) {
-	_, h := u.Screen.Size()
-	contentHeight := h - 1
+	contentHeight := u.contentHeight()
 
 	maxScroll := 0
 	if u.Doc != nil {
@@ -685,8 +684,7 @@ func (u *UI) scroll(delta int) {
 }
 
 func (u *UI) moveCursor(deltaY int, minLine, maxLine int) {
-	_, h := u.Screen.Size()
-	contentHeight := h - 1
+	contentHeight := u.contentHeight()
 
 	u.CursorY += deltaY
 	if u.CursorY < minLine {
@@ -732,14 +730,35 @@ func (u *UI) jumpToPrevLink() {
 }
 
 func (u *UI) ensureCursorVisible() {
-	_, h := u.Screen.Size()
-	contentHeight := h - 1
+	contentHeight := u.contentHeight()
 	if u.CursorY < u.ScrollY {
 		u.ScrollY = u.CursorY
 	}
 	if u.CursorY >= u.ScrollY+contentHeight {
 		u.ScrollY = u.CursorY - contentHeight + 1
 	}
+}
+
+func (u *UI) showsActionBar() bool {
+	switch u.Mode {
+	case ModeURLInput, ModeSearch, ModeWebSearch, ModeFormInput, ModeFavoriteCategory:
+		return true
+	default:
+		return false
+	}
+}
+
+func (u *UI) contentHeight() int {
+	_, h := u.Screen.Size()
+	reserved := 1 // status bar
+	if u.showsActionBar() && h >= 2 {
+		reserved = 2 // action bar + status bar
+	}
+	height := h - reserved
+	if height < 0 {
+		return 0
+	}
+	return height
 }
 
 func (u *UI) updateStatusLink() {
@@ -956,7 +975,7 @@ func (u *UI) YankLinkURL() {
 	u.SetStatus("Yanked link: " + shortenStatusText(linkURL, 64))
 }
 
-// BeginControlEdit opens the top bar editor for editable form controls.
+// BeginControlEdit opens the action bar editor for editable form controls.
 func (u *UI) BeginControlEdit(controlIdx int) {
 	if u.Doc == nil || controlIdx < 0 || controlIdx >= len(u.Doc.Controls) {
 		u.SetStatus("No form control under cursor")
@@ -977,13 +996,13 @@ func (u *UI) BeginControlEdit(controlIdx int) {
 	case "input":
 		switch c.Type {
 		case "text", "password", "search", "email", "url", "tel", "number":
-			// editable in top bar
+			// editable in action bar
 		default:
 			u.SetStatus("Control is not text-editable")
 			return
 		}
 	case "textarea", "select":
-		// editable in top bar
+		// editable in action bar
 	default:
 		u.SetStatus("Control is not text-editable")
 		return
@@ -1001,7 +1020,7 @@ func (u *UI) BeginControlEdit(controlIdx int) {
 	u.InputCursor = len(u.InputBuffer)
 }
 
-// ApplyFormInput commits the top-bar form editor buffer into the current control.
+// ApplyFormInput commits the action-bar form editor buffer into the current control.
 func (u *UI) ApplyFormInput() (int, bool) {
 	if u.Doc == nil || u.formInputControl < 0 || u.formInputControl >= len(u.Doc.Controls) {
 		u.Mode = ModeNormal

@@ -28,7 +28,7 @@ JavaScript is not executed.
 Search engines that require JavaScript (for example Google Search) are not supported.
 
 Form support includes text/password fields, textarea, select (single/multiple),
-checkboxes/radios, and submit buttons. Text-like controls are edited in the top bar.
+checkboxes/radios, and submit buttons. Text-like controls are edited in the action bar.
 
 Cookies are persisted by default in `~/.cache/wez/cookies.json` so logins can survive restarts.
 
@@ -98,7 +98,7 @@ Dump rendered page content to stdout:
 
 Default normal-mode bindings (subset):
 
-- `o` / `O` - open URL bar (empty / prefilled)
+- `o` / `O` - open action bar for URL input (empty / prefilled)
 - `Ctrl-O` - open web-search prompt
 - `j` / `k` - scroll down / up
 - `h` / `l` - move cursor left / right
