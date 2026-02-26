@@ -837,6 +837,7 @@ func (r *renderer) handleBlockquote(n *html.Node) {
 
 	// Add quote marker.
 	r.appendToLine(strings.Repeat(" ", oldIndent) + "  | ")
+	r.curCol = r.indent
 	r.walkChildren(n)
 
 	r.indent = oldIndent
@@ -854,23 +855,24 @@ func (r *renderer) handleList(n *html.Node, ordered bool) {
 
 func (r *renderer) handleListItem(n *html.Node) {
 	r.flushLine()
+	oldIndent := r.indent
 
 	var bullet string
 	if len(r.listStack) > 0 {
 		ctx := &r.listStack[len(r.listStack)-1]
 		if ctx.ordered {
 			ctx.counter++
-			bullet = strings.Repeat(" ", r.indent) + padRight(intToStr(ctx.counter)+".", 4)
+			bullet = strings.Repeat(" ", oldIndent) + padRight(intToStr(ctx.counter)+".", 4)
 		} else {
-			bullet = strings.Repeat(" ", r.indent) + "  * "
+			bullet = strings.Repeat(" ", oldIndent) + "  * "
 		}
 	} else {
-		bullet = strings.Repeat(" ", r.indent) + "  * "
+		bullet = strings.Repeat(" ", oldIndent) + "  * "
 	}
 
 	r.appendToLine(bullet)
-	oldIndent := r.indent
-	r.indent += 4
+	r.indent = oldIndent + 4
+	r.curCol = r.indent
 	r.walkChildren(n)
 	r.indent = oldIndent
 	r.flushLine()

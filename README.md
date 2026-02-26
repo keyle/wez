@@ -13,6 +13,7 @@ It aims to be fast and readable in a text UI, with practical browsing features a
 - bookmarks with categories
 - cache, persistent cookies, visited links
 - favourites
+- recents
 - view source
 - no JavaScript runtime
 - form handling, basic

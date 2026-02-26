@@ -373,6 +373,50 @@ func TestListItemParagraphDoesNotBreakAfterBullet(t *testing.T) {
 	}
 }
 
+func TestBlockquoteParagraphWithLeadingNewlineDoesNotBreakAfterMarker(t *testing.T) {
+	html := `<html><body><ul><li><blockquote>
+<p>quoted line</p>
+</blockquote></li></ul></body></html>`
+	doc := Render([]byte(html), "https://example.com", 80)
+
+	found := false
+	for _, line := range doc.Lines {
+		text := lineToText(line)
+		if strings.Contains(text, "|") {
+			found = true
+			if !strings.Contains(text, "quoted line") {
+				t.Fatalf("expected blockquote marker and paragraph on same line, got %q", text)
+			}
+			break
+		}
+	}
+	if !found {
+		t.Fatalf("expected blockquote marker line, got %q", docText(doc))
+	}
+}
+
+func TestListItemParagraphWithLeadingNewlineDoesNotBreakAfterBullet(t *testing.T) {
+	html := `<html><body><blockquote><ul><li>
+<p>nested item</p>
+</li></ul></blockquote></body></html>`
+	doc := Render([]byte(html), "https://example.com", 80)
+
+	found := false
+	for _, line := range doc.Lines {
+		text := lineToText(line)
+		if strings.Contains(text, "*") {
+			found = true
+			if !strings.Contains(text, "nested item") {
+				t.Fatalf("expected list bullet and paragraph on same line, got %q", text)
+			}
+			break
+		}
+	}
+	if !found {
+		t.Fatalf("expected list bullet line, got %q", docText(doc))
+	}
+}
+
 func TestWrappedLinkIndentIsNotLinkStyled(t *testing.T) {
 	html := `<html><body><blockquote><a href="/x">alpha beta gamma delta epsilon zeta eta theta iota kappa lambda</a></blockquote></body></html>`
 	doc := Render([]byte(html), "https://example.com", 24)
