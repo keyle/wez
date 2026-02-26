@@ -5,9 +5,9 @@ import (
 	"os"
 	"path/filepath"
 
-	"wez/internal/browser"
-	"wez/internal/config"
-	"wez/internal/keymap"
+	"wez/browser"
+	"wez/config"
+	"wez/keymap"
 )
 
 func main() {

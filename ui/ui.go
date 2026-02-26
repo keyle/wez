@@ -7,9 +7,9 @@ import (
 	"github.com/gdamore/tcell/v2"
 	"github.com/mattn/go-runewidth"
 
-	"wez/internal/config"
-	"wez/internal/keymap"
-	"wez/internal/render"
+	"wez/config"
+	"wez/keymap"
+	"wez/render"
 )
 
 // Mode represents the current input mode.

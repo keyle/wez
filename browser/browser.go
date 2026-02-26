@@ -7,12 +7,12 @@ import (
 	"os/exec"
 	"strings"
 
-	"wez/internal/config"
-	"wez/internal/fetch"
-	"wez/internal/history"
-	"wez/internal/keymap"
-	"wez/internal/render"
-	"wez/internal/ui"
+	"wez/config"
+	"wez/fetch"
+	"wez/history"
+	"wez/keymap"
+	"wez/render"
+	"wez/ui"
 )
 
 // Browser ties all components together.
