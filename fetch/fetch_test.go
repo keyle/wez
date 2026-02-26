@@ -6,6 +6,8 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+
+	"wez/config"
 )
 
 func TestFetchBasicHTML(t *testing.T) {
@@ -95,6 +97,9 @@ func TestFetchUserAgent(t *testing.T) {
 
 	if !strings.Contains(ua, "wez") {
 		t.Errorf("expected user agent containing 'wez', got %q", ua)
+	}
+	if !strings.Contains(ua, config.Version) {
+		t.Errorf("expected user agent containing version %q, got %q", config.Version, ua)
 	}
 }
 

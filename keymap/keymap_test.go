@@ -17,7 +17,7 @@ func TestDefaultBindings(t *testing.T) {
 		PageDown, PageUp, HalfPageDown, HalfPageUp,
 		GoTop, GoBottom, Back, Forward,
 		OpenURL, OpenURLEdit, FollowLink, NextLink, PrevLink,
-		Search, SearchWeb, SearchNext, SearchPrev, Reload, OpenImage, YankURL,
+		Search, SearchWeb, SearchNext, SearchPrev, Reload, OpenImage, YankURL, YankLinkURL,
 		VisualMode, VisualLine,
 	}
 
@@ -175,6 +175,12 @@ func TestSpecialKeyBindings(t *testing.T) {
 	action, _ = km.Resolve("", "R")
 	if action != Reload {
 		t.Errorf("expected R -> reload, got %q", action)
+	}
+
+	// Y -> yank_link_url.
+	action, _ = km.Resolve("", "Y")
+	if action != YankLinkURL {
+		t.Errorf("expected Y -> yank_link_url, got %q", action)
 	}
 }
 

@@ -42,8 +42,9 @@ const (
 	ActionWebSearch // web search for InputBuffer
 	ActionSearchNext
 	ActionSearchPrev
-	ActionYankURL    // yank selected text or current line
-	ActionOpenMailto // open mailto link under cursor
+	ActionYankURL     // yank selected text or current line
+	ActionYankLinkURL // yank href of link under cursor
+	ActionOpenMailto  // open mailto link under cursor
 )
 
 // UI manages the terminal display and input.
@@ -513,6 +514,9 @@ func (u *UI) executeAction(actionName string) Action {
 
 	case keymap.YankURL:
 		return ActionYankURL
+
+	case keymap.YankLinkURL:
+		return ActionYankLinkURL
 	}
 
 	u.clampCursor()
@@ -867,6 +871,38 @@ func (u *UI) Yank() {
 	}
 
 	u.SetStatus(fmt.Sprintf("Yanked %d chars", len([]rune(text))))
+}
+
+// YankLinkURL copies the href under the cursor to clipboard.
+func (u *UI) YankLinkURL() {
+	if u.Doc == nil {
+		u.SetStatus("No link under cursor")
+		return
+	}
+
+	_, linkURL, ok := u.Doc.LinkAt(u.CursorY, u.CursorX)
+	if !ok || strings.TrimSpace(linkURL) == "" {
+		u.SetStatus("No link under cursor")
+		return
+	}
+
+	if err := copyToClipboard(linkURL); err != nil {
+		u.SetStatus("Link: " + shortenStatusText(linkURL, 64) + " (no clipboard helper)")
+		return
+	}
+
+	u.SetStatus("Yanked link: " + shortenStatusText(linkURL, 64))
+}
+
+func shortenStatusText(s string, maxRunes int) string {
+	r := []rune(s)
+	if len(r) <= maxRunes {
+		return s
+	}
+	if maxRunes <= 3 {
+		return string(r[:maxRunes])
+	}
+	return string(r[:maxRunes-3]) + "..."
 }
 
 func (u *UI) selectedText() string {

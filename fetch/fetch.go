@@ -9,6 +9,8 @@ import (
 	"net/url"
 	"strings"
 	"time"
+
+	"wez/config"
 )
 
 type Result struct {
@@ -57,7 +59,7 @@ func Fetch(rawURL string) (*Result, error) {
 	}
 
 	req.Header.Set("Accept-Encoding", "gzip")
-	req.Header.Set("User-Agent", "wez/1.0 (terminal browser)")
+	req.Header.Set("User-Agent", userAgent())
 	req.Header.Set("Accept", "text/html,application/xhtml+xml,text/plain,*/*;q=0.8")
 	req.Header.Set("Accept-Language", "en-US,en;q=0.9")
 
@@ -89,4 +91,8 @@ func Fetch(rawURL string) (*Result, error) {
 		StatusCode:  resp.StatusCode,
 		FinalURL:    resp.Request.URL.String(),
 	}, nil
+}
+
+func userAgent() string {
+	return fmt.Sprintf("wez/%s (terminal browser)", config.Version)
 }

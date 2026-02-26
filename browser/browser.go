@@ -231,6 +231,9 @@ func (b *Browser) Run(initialURL string) {
 
 		case ui.ActionYankURL:
 			b.UI.Yank()
+
+		case ui.ActionYankLinkURL:
+			b.UI.YankLinkURL()
 		}
 	}
 }
@@ -709,7 +712,7 @@ func (b *Browser) ShowWelcome() {
 			{Spans: []render.Span{{Text: "  n / N       Next / previous search match", LinkIdx: -1}}},
 			{Spans: []render.Span{{Text: "  i           Open image under cursor", LinkIdx: -1}}},
 			{Spans: []render.Span{{Text: "  v / V       Enter visual / visual-line mode", LinkIdx: -1}}},
-			{Spans: []render.Span{{Text: "  y           Yank selection (or current line)", LinkIdx: -1}}},
+			{Spans: []render.Span{{Text: "  y / Y       Yank text / link URL under cursor", LinkIdx: -1}}},
 			{Spans: []render.Span{{Text: "  Mouse       Click to move, drag to select", LinkIdx: -1}}},
 			{Spans: []render.Span{{Text: "  q           Quit", LinkIdx: -1}}},
 			{},
