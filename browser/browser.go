@@ -717,7 +717,7 @@ func (b *Browser) ShowWelcome() {
 			{Spans: []render.Span{{Text: "Keymap:  ~/.config/wez/keymap.toml", Style: render.SpanStyle{Color: "code"}, LinkIdx: -1}}},
 			{Spans: []render.Span{{Text: "History: ~/.cache/wez/history", Style: render.SpanStyle{Color: "code"}, LinkIdx: -1}}},
 			{},
-			{Spans: []render.Span{{Text: "Press 'o' to enter a URL and start browsing.", LinkIdx: -1}}},
+			{Spans: []render.Span{{Text: "Press 'o' to enter a URL, 'ctrl-o' for web search.", LinkIdx: -1}}},
 		},
 	}
 	b.UI.SetDocument(doc)
