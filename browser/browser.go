@@ -180,6 +180,12 @@ func (b *Browser) Run(initialURL string) {
 			b.UI.SearchTerm = b.UI.InputBuffer
 			b.UI.PerformSearch()
 
+		case ui.ActionWebSearch:
+			query := strings.TrimSpace(b.UI.InputBuffer)
+			if query != "" {
+				b.Navigate(b.Cfg.SearchURL(query))
+			}
+
 		case ui.ActionSearchNext:
 			b.UI.NextSearchMatch()
 
@@ -520,6 +526,7 @@ func (b *Browser) ShowWelcome() {
 			{Spans: []render.Span{{Text: "  L           Go forward", LinkIdx: -1}}},
 			{Spans: []render.Span{{Text: "  r           Reload page", LinkIdx: -1}}},
 			{Spans: []render.Span{{Text: "  /           Search in page", LinkIdx: -1}}},
+			{Spans: []render.Span{{Text: "  Ctrl-O      Search web", LinkIdx: -1}}},
 			{Spans: []render.Span{{Text: "  n / N       Next / previous search match", LinkIdx: -1}}},
 			{Spans: []render.Span{{Text: "  i           Open image under cursor", LinkIdx: -1}}},
 			{Spans: []render.Span{{Text: "  v / V       Enter visual / visual-line mode", LinkIdx: -1}}},

@@ -21,6 +21,7 @@ const (
 	ModeNormal Mode = iota
 	ModeURLInput
 	ModeSearch
+	ModeWebSearch
 	ModeVisual
 	ModeVisualLine
 )
@@ -38,6 +39,7 @@ const (
 	ActionReload
 	ActionOpenImage // open image under cursor
 	ActionSearch    // search for InputBuffer
+	ActionWebSearch // web search for InputBuffer
 	ActionSearchNext
 	ActionSearchPrev
 	ActionYankURL    // yank selected text or current line
@@ -189,7 +191,7 @@ func (u *UI) Draw() {
 	contentStart := 0
 	contentEnd := h - 1 // status bar
 
-	if u.Mode == ModeURLInput || u.Mode == ModeSearch {
+	if u.Mode == ModeURLInput || u.Mode == ModeSearch || u.Mode == ModeWebSearch {
 		contentStart = 1
 	}
 
@@ -247,10 +249,10 @@ func (u *UI) Draw() {
 	}
 
 	// Draw URL bar / search bar if active.
-	if u.Mode == ModeURLInput || u.Mode == ModeSearch {
+	if u.Mode == ModeURLInput || u.Mode == ModeSearch || u.Mode == ModeWebSearch {
 		barStyle := tcell.StyleDefault.
-			Background(config.ParseColor(u.Cfg.Colors.URLBar)).
-			Foreground(tcell.ColorBlack)
+			Background(config.ParseColor(u.Cfg.Colors.TopBarBg)).
+			Foreground(config.ParseColor(u.Cfg.Colors.TopBar))
 		for x := 0; x < w; x++ {
 			u.Screen.SetContent(x, 0, ' ', nil, barStyle)
 		}
@@ -267,8 +269,8 @@ func (u *UI) Draw() {
 
 	// Draw status bar.
 	statusStyle := tcell.StyleDefault.
-		Background(config.ParseColor(u.Cfg.Colors.StatusBar)).
-		Foreground(tcell.ColorBlack)
+		Background(config.ParseColor(u.Cfg.Colors.StatusBarBg)).
+		Foreground(config.ParseColor(u.Cfg.Colors.StatusBar))
 	if u.statusAlert {
 		statusStyle = tcell.StyleDefault.Background(tcell.ColorYellow).Foreground(tcell.ColorBlack)
 	}
@@ -339,12 +341,14 @@ func (u *UI) HandleEvent(ev tcell.Event) Action {
 			return u.handleInputKey(ev, ActionNavigate)
 		case ModeSearch:
 			return u.handleInputKey(ev, ActionSearch)
+		case ModeWebSearch:
+			return u.handleInputKey(ev, ActionWebSearch)
 		default:
 			return u.handleNormalKey(ev)
 		}
 
 	case *tcell.EventMouse:
-		if u.Mode == ModeURLInput || u.Mode == ModeSearch {
+		if u.Mode == ModeURLInput || u.Mode == ModeSearch || u.Mode == ModeWebSearch {
 			return ActionNone
 		}
 		u.handleMouseEvent(ev)
@@ -480,6 +484,12 @@ func (u *UI) executeAction(actionName string) Action {
 	case keymap.Search:
 		u.Mode = ModeSearch
 		u.InputPrompt = "/"
+		u.InputBuffer = ""
+		u.InputCursor = 0
+
+	case keymap.SearchWeb:
+		u.Mode = ModeWebSearch
+		u.InputPrompt = "search web: "
 		u.InputBuffer = ""
 		u.InputCursor = 0
 

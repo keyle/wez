@@ -20,6 +20,15 @@ func TestDefault(t *testing.T) {
 	if cfg.DownloadDir == "" {
 		t.Error("expected default download directory to be set")
 	}
+	if cfg.SearchEngine != "duckduckgo" {
+		t.Errorf("expected default search engine 'duckduckgo', got %q", cfg.SearchEngine)
+	}
+	if cfg.Colors.StatusBarBg != "darkgray" {
+		t.Errorf("expected default status_bar_bg 'darkgray', got %q", cfg.Colors.StatusBarBg)
+	}
+	if cfg.Colors.TopBar != "black" {
+		t.Errorf("expected default top_bar 'black', got %q", cfg.Colors.TopBar)
+	}
 	if cfg.Colors.Link != "blue" {
 		t.Errorf("expected default link color 'blue', got %q", cfg.Colors.Link)
 	}
@@ -62,6 +71,18 @@ func TestAutoCreateConfig(t *testing.T) {
 	if !strings.Contains(string(content), "download_dir") {
 		t.Error("expected auto-created config to include download_dir")
 	}
+	if !strings.Contains(string(content), "search_engine") {
+		t.Error("expected auto-created config to include search_engine")
+	}
+	if !strings.Contains(string(content), "search_url_template") {
+		t.Error("expected auto-created config to include search_url_template")
+	}
+	if !strings.Contains(string(content), "top_bar_bg") {
+		t.Error("expected auto-created config to include top_bar_bg")
+	}
+	if !strings.Contains(string(content), "status_bar_bg") {
+		t.Error("expected auto-created config to include status_bar_bg")
+	}
 }
 
 func TestLoadMissingFile(t *testing.T) {
@@ -86,6 +107,7 @@ func TestLoadFromFile(t *testing.T) {
 	configContent := `
 image_viewer = "feh %s"
 download_dir = "~/Downloads"
+search_engine = "google"
 
 [colors]
 link = "cyan"
@@ -111,6 +133,12 @@ heading = "green"
 	if cfg.DownloadDir != filepath.Join(tmpDir, "Downloads") {
 		t.Errorf("expected expanded download_dir %q, got %q", filepath.Join(tmpDir, "Downloads"), cfg.DownloadDir)
 	}
+	if cfg.SearchEngine != "google" {
+		t.Errorf("expected search_engine google, got %q", cfg.SearchEngine)
+	}
+	if got := cfg.SearchURL("terminal browser"); !strings.HasPrefix(got, "https://www.google.com/search?q=") {
+		t.Errorf("expected google search URL, got %q", got)
+	}
 	if cfg.Colors.Link != "cyan" {
 		t.Errorf("expected 'cyan', got %q", cfg.Colors.Link)
 	}
@@ -119,6 +147,17 @@ heading = "green"
 		// Code keeps its default since we didn't override it.
 		// Actually TOML partial decode: the whole [colors] section was decoded,
 		// so unset fields get zero values. Let me adjust the test.
+	}
+}
+
+func TestSearchURLTemplateOverride(t *testing.T) {
+	cfg := Default()
+	cfg.SearchEngine = "duckduckgo"
+	cfg.SearchURLTmpl = "https://example.com/search?term=%s&src=wez"
+
+	got := cfg.SearchURL("hello world")
+	if got != "https://example.com/search?term=hello+world&src=wez" {
+		t.Fatalf("unexpected search URL: %q", got)
 	}
 }
 
@@ -134,6 +173,10 @@ func TestParseColor(t *testing.T) {
 		{"purple", tcell.ColorPurple},
 		{"white", tcell.ColorWhite},
 		{"gray", tcell.ColorGray},
+		{"darkgray", tcell.ColorDarkGray},
+		{"#ff0000", tcell.NewRGBColor(255, 0, 0)},
+		{"#0f0", tcell.NewRGBColor(0, 255, 0)},
+		{"color208", tcell.PaletteColor(208)},
 		{"unknown", tcell.ColorDefault},
 	}
 

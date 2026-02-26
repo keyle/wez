@@ -30,6 +30,7 @@ const (
 	NextLink     = "next_link"
 	PrevLink     = "prev_link"
 	Search       = "search"
+	SearchWeb    = "search_web"
 	SearchNext   = "search_next"
 	SearchPrev   = "search_prev"
 	Reload       = "reload"
@@ -70,6 +71,7 @@ func DefaultBindings() map[string][]string {
 		NextLink:     {"Tab"},
 		PrevLink:     {"Shift-Tab"},
 		Search:       {"/"},
+		SearchWeb:    {"Ctrl-O"},
 		SearchNext:   {"n"},
 		SearchPrev:   {"N"},
 		Reload:       {"r"},
@@ -284,6 +286,7 @@ follow_link    = ["Enter"]
 next_link      = ["Tab"]
 prev_link      = ["Shift-Tab"]
 search         = ["/"]
+search_web     = ["Ctrl-O"]
 search_next    = ["n"]
 search_prev    = ["N"]
 reload         = ["r"]

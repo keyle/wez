@@ -17,7 +17,7 @@ func TestDefaultBindings(t *testing.T) {
 		PageDown, PageUp, HalfPageDown, HalfPageUp,
 		GoTop, GoBottom, Back, Forward,
 		OpenURL, OpenURLEdit, FollowLink, NextLink, PrevLink,
-		Search, SearchNext, SearchPrev, Reload, OpenImage, YankURL,
+		Search, SearchWeb, SearchNext, SearchPrev, Reload, OpenImage, YankURL,
 		VisualMode, VisualLine,
 	}
 
@@ -153,6 +153,12 @@ func TestSpecialKeyBindings(t *testing.T) {
 		t.Errorf("expected Ctrl-F -> page_down, got %q", action)
 	}
 
+	// Ctrl-O -> search_web.
+	action, _ = km.Resolve("", "Ctrl-O")
+	if action != SearchWeb {
+		t.Errorf("expected Ctrl-O -> search_web, got %q", action)
+	}
+
 	// Space -> page_down.
 	action, _ = km.Resolve("", "Space")
 	if action != PageDown {
@@ -275,6 +281,7 @@ func TestEventToKeyString(t *testing.T) {
 		{"pgup", tcell.KeyPgUp, 0, "PgUp"},
 		{"pgdn", tcell.KeyPgDn, 0, "PgDn"},
 		{"ctrl-f", tcell.KeyCtrlF, 0, "Ctrl-F"},
+		{"ctrl-o", tcell.KeyCtrlO, 0, "Ctrl-O"},
 		{"ctrl-b", tcell.KeyCtrlB, 0, "Ctrl-B"},
 		{"ctrl-d", tcell.KeyCtrlD, 0, "Ctrl-D"},
 		{"ctrl-u", tcell.KeyCtrlU, 0, "Ctrl-U"},
