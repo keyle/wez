@@ -21,6 +21,9 @@ func TestDefault(t *testing.T) {
 	if cfg.DownloadDir == "" {
 		t.Error("expected default download directory to be set")
 	}
+	if !cfg.ShowRecentOnWelcome {
+		t.Error("expected show_recent_on_welcome default true")
+	}
 	if !cfg.PersistCookies {
 		t.Error("expected persist_cookies default true")
 	}
@@ -105,6 +108,9 @@ func TestAutoCreateConfig(t *testing.T) {
 	if !strings.Contains(string(content), "download_dir") {
 		t.Error("expected auto-created config to include download_dir")
 	}
+	if !strings.Contains(string(content), "show_recent_on_welcome") {
+		t.Error("expected auto-created config to include show_recent_on_welcome")
+	}
 	if !strings.Contains(string(content), "search_engine") {
 		t.Error("expected auto-created config to include search_engine")
 	}
@@ -153,6 +159,7 @@ func TestLoadFromFile(t *testing.T) {
 	configContent := `
 image_viewer = "feh %s"
 download_dir = "~/Downloads"
+show_recent_on_welcome = false
 persist_cookies = false
 cookie_jar_path = "~/.cache/wez/custom-cookies.json"
 persist_session_cookies = false
@@ -182,6 +189,9 @@ heading = "green"
 	}
 	if cfg.DownloadDir != filepath.Join(tmpDir, "Downloads") {
 		t.Errorf("expected expanded download_dir %q, got %q", filepath.Join(tmpDir, "Downloads"), cfg.DownloadDir)
+	}
+	if cfg.ShowRecentOnWelcome {
+		t.Error("expected show_recent_on_welcome=false from config")
 	}
 	if cfg.SearchEngine != "bing" {
 		t.Errorf("expected search_engine bing, got %q", cfg.SearchEngine)

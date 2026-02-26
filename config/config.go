@@ -18,6 +18,7 @@ type Config struct {
 	ImageViewer           string      `toml:"image_viewer"`
 	MailtoHandler         string      `toml:"mailto_handler"`
 	DownloadDir           string      `toml:"download_dir"`
+	ShowRecentOnWelcome   bool        `toml:"show_recent_on_welcome"`
 	PersistCookies        bool        `toml:"persist_cookies"`
 	CookieJarPath         string      `toml:"cookie_jar_path"`
 	PersistSessionCookies bool        `toml:"persist_session_cookies"`
@@ -48,6 +49,7 @@ func Default() Config {
 		ImageViewer:           "viu %s",
 		MailtoHandler:         "open mailto:%s",
 		DownloadDir:           defaultDownloadDir(),
+		ShowRecentOnWelcome:   true,
 		PersistCookies:        true,
 		CookieJarPath:         defaultCookieJarPath(),
 		PersistSessionCookies: true,
@@ -368,6 +370,9 @@ mailto_handler = "open mailto:%%s"
 # Directory where downloaded binary files (e.g. PDF, ZIP) are saved.
 download_dir = %q
 
+# Show recent history entries on the welcome page.
+show_recent_on_welcome = %t
+
 # Persist cookies across browser restarts.
 persist_cookies = %t
 
@@ -408,5 +413,5 @@ action_bar  = "black"
 action_bar_bg = "white"
 status_bar  = "gray"
 status_bar_bg = "black"
-`, shortHome(cfg.DownloadDir), cfg.PersistCookies, shortHome(cfg.CookieJarPath), cfg.PersistSessionCookies, cfg.FollowMetaRedirects, cfg.SearchEngine, cfg.SearchURLTmpl)
+`, shortHome(cfg.DownloadDir), cfg.ShowRecentOnWelcome, cfg.PersistCookies, shortHome(cfg.CookieJarPath), cfg.PersistSessionCookies, cfg.FollowMetaRedirects, cfg.SearchEngine, cfg.SearchURLTmpl)
 }

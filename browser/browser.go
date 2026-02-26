@@ -1461,49 +1461,99 @@ func buildCommandArgs(template, arg string) []string {
 
 // ShowWelcome displays a welcome page when no URL is provided.
 func (b *Browser) ShowWelcome() {
+	links := make([]render.Link, 0, 5)
+	lines := []render.Line{
+		{Spans: []render.Span{{Text: "  wez " + config.Version, Style: render.SpanStyle{Bold: true, Color: "heading"}, LinkIdx: -1}}},
+		{},
+		{Spans: []render.Span{{Text: "Keybindings:", Style: render.SpanStyle{Bold: true}, LinkIdx: -1}}},
+		{},
+		{Spans: []render.Span{{Text: "  o / O       Open action bar (URL input; O pre-fills)", LinkIdx: -1}}},
+		{Spans: []render.Span{{Text: "  j / k       Scroll down / up", LinkIdx: -1}}},
+		{Spans: []render.Span{{Text: "  h / l       Move cursor left / right", LinkIdx: -1}}},
+		{Spans: []render.Span{{Text: "  gg / G      Go to top / bottom", LinkIdx: -1}}},
+		{Spans: []render.Span{{Text: "  Ctrl-F      Page down", LinkIdx: -1}}},
+		{Spans: []render.Span{{Text: "  PgUp        Page up", LinkIdx: -1}}},
+		{Spans: []render.Span{{Text: "  Ctrl-D/U    Half page down / up", LinkIdx: -1}}},
+		{Spans: []render.Span{{Text: "  Space       Page down", LinkIdx: -1}}},
+		{Spans: []render.Span{{Text: "  Tab / S-Tab Jump to next / previous link/control", LinkIdx: -1}}},
+		{Spans: []render.Span{{Text: "  Enter       Activate link/form control under cursor", LinkIdx: -1}}},
+		{Spans: []render.Span{{Text: "              (edit fields, toggle checks, submit buttons)", LinkIdx: -1}}},
+		{Spans: []render.Span{{Text: "  b / B       Go back", LinkIdx: -1}}},
+		{Spans: []render.Span{{Text: "  Ctrl-W      Open welcome page", LinkIdx: -1}}},
+		{Spans: []render.Span{{Text: "  Ctrl-H      Open history view (Esc to return)", LinkIdx: -1}}},
+		{Spans: []render.Span{{Text: "  Ctrl-B      Open bookmarks view (Esc to return)", LinkIdx: -1}}},
+		{Spans: []render.Span{{Text: "  L           Go forward", LinkIdx: -1}}},
+		{Spans: []render.Span{{Text: "  r / R       Reload page", LinkIdx: -1}}},
+		{Spans: []render.Span{{Text: "  za / zd     Add / remove favorite", LinkIdx: -1}}},
+		{Spans: []render.Span{{Text: "  zc / zh     Clear cache / clear history", LinkIdx: -1}}},
+		{Spans: []render.Span{{Text: "  /           Search in page", LinkIdx: -1}}},
+		{Spans: []render.Span{{Text: "  Ctrl-o      Search web", LinkIdx: -1}}},
+		{Spans: []render.Span{{Text: "  n / N       Next / previous search match", LinkIdx: -1}}},
+		{Spans: []render.Span{{Text: "  i           Open image under cursor", LinkIdx: -1}}},
+		{Spans: []render.Span{{Text: "  v / V       Enter visual / visual-line mode", LinkIdx: -1}}},
+		{Spans: []render.Span{{Text: "  y / Y       Yank text / link URL under cursor", LinkIdx: -1}}},
+		{Spans: []render.Span{{Text: "  Mouse       Click to move, drag to select", LinkIdx: -1}}},
+		{Spans: []render.Span{{Text: "  q           Quit", LinkIdx: -1}}},
+		{},
+		{Spans: []render.Span{{Text: "Config:  ~/.config/wez/config.toml", Style: render.SpanStyle{Color: "code"}, LinkIdx: -1}}},
+		{Spans: []render.Span{{Text: "Keymap:  ~/.config/wez/keymap.toml", Style: render.SpanStyle{Color: "code"}, LinkIdx: -1}}},
+		{Spans: []render.Span{{Text: "Favs:    ~/.config/wez/fav.json", Style: render.SpanStyle{Color: "code"}, LinkIdx: -1}}},
+		{Spans: []render.Span{{Text: "History: ~/.cache/wez/history", Style: render.SpanStyle{Color: "code"}, LinkIdx: -1}}},
+		{},
+		{Spans: []render.Span{{Text: "Press 'o' to enter a URL, 'ctrl-o' for web search.", LinkIdx: -1}}},
+	}
+
+	if b.Cfg.ShowRecentOnWelcome {
+		lines = append(lines,
+			render.Line{},
+			render.Line{Spans: []render.Span{{Text: strings.Repeat("─", 64), Style: render.SpanStyle{Color: "hrule"}, LinkIdx: -1}}},
+			render.Line{Spans: []render.Span{{Text: "Recent:", Style: render.SpanStyle{Bold: true}, LinkIdx: -1}}},
+		)
+
+		recent := recentHistoryEntries(b.History.Entries(), 5)
+		if len(recent) == 0 {
+			lines = append(lines, render.Line{Spans: []render.Span{{Text: "  (no history yet)", LinkIdx: -1}}})
+		} else {
+			for _, e := range recent {
+				title := strings.TrimSpace(e.Title)
+				if title == "" {
+					title = e.URL
+				}
+
+				lineIdx := len(lines)
+				linkIdx := len(links)
+				linkColor := "link"
+				if b.isURLSeen(e.URL) {
+					linkColor = "visited_link"
+				}
+
+				lines = append(lines, render.Line{Spans: []render.Span{
+					{Text: "  - ", LinkIdx: -1},
+					{Text: title, LinkIdx: linkIdx, Style: render.SpanStyle{Underline: true, Color: linkColor}},
+				}})
+				lines = append(lines, render.Line{Spans: []render.Span{{Text: "    " + e.URL, LinkIdx: -1, Style: render.SpanStyle{Color: "code"}}}})
+				links = append(links, render.Link{URL: e.URL, Line: lineIdx, Col: 4})
+			}
+		}
+	}
+
 	doc := &render.Document{
 		Title: "",
 		URL:   aboutWelcomeURL,
-		Lines: []render.Line{
-			{Spans: []render.Span{{Text: "  wez " + config.Version, Style: render.SpanStyle{Bold: true, Color: "heading"}, LinkIdx: -1}}},
-			{},
-			{Spans: []render.Span{{Text: "Keybindings:", Style: render.SpanStyle{Bold: true}, LinkIdx: -1}}},
-			{},
-			{Spans: []render.Span{{Text: "  o / O       Open action bar (URL input; O pre-fills)", LinkIdx: -1}}},
-			{Spans: []render.Span{{Text: "  j / k       Scroll down / up", LinkIdx: -1}}},
-			{Spans: []render.Span{{Text: "  h / l       Move cursor left / right", LinkIdx: -1}}},
-			{Spans: []render.Span{{Text: "  gg / G      Go to top / bottom", LinkIdx: -1}}},
-			{Spans: []render.Span{{Text: "  Ctrl-F      Page down", LinkIdx: -1}}},
-			{Spans: []render.Span{{Text: "  PgUp        Page up", LinkIdx: -1}}},
-			{Spans: []render.Span{{Text: "  Ctrl-D/U    Half page down / up", LinkIdx: -1}}},
-			{Spans: []render.Span{{Text: "  Space       Page down", LinkIdx: -1}}},
-			{Spans: []render.Span{{Text: "  Tab / S-Tab Jump to next / previous link/control", LinkIdx: -1}}},
-			{Spans: []render.Span{{Text: "  Enter       Activate link/form control under cursor", LinkIdx: -1}}},
-			{Spans: []render.Span{{Text: "              (edit fields, toggle checks, submit buttons)", LinkIdx: -1}}},
-			{Spans: []render.Span{{Text: "  b / B       Go back", LinkIdx: -1}}},
-			{Spans: []render.Span{{Text: "  Ctrl-W      Open welcome page", LinkIdx: -1}}},
-			{Spans: []render.Span{{Text: "  Ctrl-H      Open history view (Esc to return)", LinkIdx: -1}}},
-			{Spans: []render.Span{{Text: "  Ctrl-B      Open bookmarks view (Esc to return)", LinkIdx: -1}}},
-			{Spans: []render.Span{{Text: "  L           Go forward", LinkIdx: -1}}},
-			{Spans: []render.Span{{Text: "  r / R       Reload page", LinkIdx: -1}}},
-			{Spans: []render.Span{{Text: "  za / zd     Add / remove favorite", LinkIdx: -1}}},
-			{Spans: []render.Span{{Text: "  zc / zh     Clear cache / clear history", LinkIdx: -1}}},
-			{Spans: []render.Span{{Text: "  /           Search in page", LinkIdx: -1}}},
-			{Spans: []render.Span{{Text: "  Ctrl-o      Search web", LinkIdx: -1}}},
-			{Spans: []render.Span{{Text: "  n / N       Next / previous search match", LinkIdx: -1}}},
-			{Spans: []render.Span{{Text: "  i           Open image under cursor", LinkIdx: -1}}},
-			{Spans: []render.Span{{Text: "  v / V       Enter visual / visual-line mode", LinkIdx: -1}}},
-			{Spans: []render.Span{{Text: "  y / Y       Yank text / link URL under cursor", LinkIdx: -1}}},
-			{Spans: []render.Span{{Text: "  Mouse       Click to move, drag to select", LinkIdx: -1}}},
-			{Spans: []render.Span{{Text: "  q           Quit", LinkIdx: -1}}},
-			{},
-			{Spans: []render.Span{{Text: "Config:  ~/.config/wez/config.toml", Style: render.SpanStyle{Color: "code"}, LinkIdx: -1}}},
-			{Spans: []render.Span{{Text: "Keymap:  ~/.config/wez/keymap.toml", Style: render.SpanStyle{Color: "code"}, LinkIdx: -1}}},
-			{Spans: []render.Span{{Text: "Favs:    ~/.config/wez/fav.json", Style: render.SpanStyle{Color: "code"}, LinkIdx: -1}}},
-			{Spans: []render.Span{{Text: "History: ~/.cache/wez/history", Style: render.SpanStyle{Color: "code"}, LinkIdx: -1}}},
-			{},
-			{Spans: []render.Span{{Text: "Press 'o' to enter a URL, 'ctrl-o' for web search.", LinkIdx: -1}}},
-		},
+		Lines: lines,
+		Links: links,
 	}
 	b.UI.SetDocument(doc)
+}
+
+func recentHistoryEntries(entries []history.Entry, max int) []history.Entry {
+	if max <= 0 || len(entries) == 0 {
+		return nil
+	}
+
+	out := make([]history.Entry, 0, max)
+	for i := len(entries) - 1; i >= 0 && len(out) < max; i-- {
+		out = append(out, entries[i])
+	}
+	return out
 }

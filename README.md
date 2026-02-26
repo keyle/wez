@@ -10,6 +10,7 @@ It aims to be fast and readable in a text UI, with practical browsing features a
 - vim-like bindings, search, link/form activation, and key remapping
 - downloads for binary responses
 - history view
+- bookmarks with categories
 - cache, persistent cookies, visited links
 - favourites
 - no JavaScript runtime

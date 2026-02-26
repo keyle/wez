@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"wez/config"
+	"wez/history"
 	"wez/render"
 )
 
@@ -212,5 +213,34 @@ func TestIsAboutBookmarksURL(t *testing.T) {
 	}
 	if isAboutBookmarksURL("about:favorites") {
 		t.Fatal("did not expect legacy about:favorites to match")
+	}
+}
+
+func TestRecentHistoryEntries(t *testing.T) {
+	entries := []history.Entry{
+		{URL: "https://a.example"},
+		{URL: "https://b.example"},
+		{URL: "https://c.example"},
+		{URL: "https://d.example"},
+		{URL: "https://e.example"},
+		{URL: "https://f.example"},
+	}
+
+	out := recentHistoryEntries(entries, 5)
+	if len(out) != 5 {
+		t.Fatalf("expected 5 entries, got %d", len(out))
+	}
+	if out[0].URL != "https://f.example" || out[4].URL != "https://b.example" {
+		t.Fatalf("unexpected order: first=%q last=%q", out[0].URL, out[4].URL)
+	}
+
+	out = recentHistoryEntries(entries, 20)
+	if len(out) != len(entries) {
+		t.Fatalf("expected all entries when max too large, got %d", len(out))
+	}
+
+	out = recentHistoryEntries(nil, 5)
+	if len(out) != 0 {
+		t.Fatalf("expected empty output for nil input, got %d", len(out))
 	}
 }
