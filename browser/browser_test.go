@@ -178,3 +178,15 @@ func TestBuildFormSubmissionRejectsJavaScriptAction(t *testing.T) {
 		t.Fatal("expected javascript action to be rejected")
 	}
 }
+
+func TestIsAboutWelcomeURL(t *testing.T) {
+	if !isAboutWelcomeURL("about:welcome") {
+		t.Fatal("expected exact about:welcome to match")
+	}
+	if !isAboutWelcomeURL(" ABOUT:WELCOME ") {
+		t.Fatal("expected case/space variant to match")
+	}
+	if isAboutWelcomeURL("about:history") {
+		t.Fatal("did not expect about:history to match")
+	}
+}

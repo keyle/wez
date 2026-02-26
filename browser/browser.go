@@ -32,7 +32,10 @@ var (
 	httpEquivAttrRe = regexp.MustCompile(`(?is)\bhttp-equiv\s*=\s*("([^"]*)"|'([^']*)'|([^\s>]+))`)
 )
 
-const maxMetaRedirectHops = 8
+const (
+	maxMetaRedirectHops = 8
+	aboutWelcomeURL     = "about:welcome"
+)
 
 type formSubmission struct {
 	Method    string
@@ -87,6 +90,17 @@ func New(cfg config.Config, km *keymap.Keymap) (*Browser, error) {
 
 // Navigate fetches and renders a URL.
 func (b *Browser) Navigate(rawURL string) {
+	if isAboutWelcomeURL(rawURL) {
+		if b.currentURL != "" && b.currentURL != aboutWelcomeURL {
+			b.backStack = append(b.backStack, b.currentURL)
+		}
+		b.forwardStack = nil
+		b.currentURL = aboutWelcomeURL
+		b.ShowWelcome()
+		b.UI.SetStatus("")
+		return
+	}
+
 	if b.historyViewActive {
 		b.historyViewActive = false
 		b.historyViewPrevDoc = nil
@@ -481,6 +495,10 @@ func (b *Browser) buildHistoryDoc() *render.Document {
 func isJavaScriptURL(raw string) bool {
 	v := strings.ToLower(strings.TrimSpace(raw))
 	return strings.HasPrefix(v, "javascript:")
+}
+
+func isAboutWelcomeURL(raw string) bool {
+	return strings.EqualFold(strings.TrimSpace(raw), aboutWelcomeURL)
 }
 
 func (b *Browser) activateControl(controlIdx int) {
@@ -1196,7 +1214,7 @@ func buildCommandArgs(template, arg string) []string {
 func (b *Browser) ShowWelcome() {
 	doc := &render.Document{
 		Title: "wez - terminal web browser",
-		URL:   "about:welcome",
+		URL:   aboutWelcomeURL,
 		Lines: []render.Line{
 			{Spans: []render.Span{{Text: "wez " + config.Version, Style: render.SpanStyle{Bold: true, Color: "heading"}, LinkIdx: -1}}},
 			{Spans: []render.Span{{Text: "A terminal web browser", LinkIdx: -1}}},
