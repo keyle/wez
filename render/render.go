@@ -487,9 +487,12 @@ func (r *renderer) handleElement(n *html.Node) {
 		atom.Header, atom.Footer, atom.Nav, atom.Fieldset,
 		atom.Figure, atom.Figcaption, atom.Details, atom.Summary,
 		atom.Address:
-		r.ensureBlankLine()
-		if r.indent > 0 {
-			r.addIndent()
+		prefixInlineStart := len(r.curSpans) > 0 && r.curCol == r.indent
+		if !prefixInlineStart {
+			r.ensureBlankLine()
+			if r.indent > 0 {
+				r.addIndent()
+			}
 		}
 		r.walkChildren(n)
 		r.ensureBlankLine()
