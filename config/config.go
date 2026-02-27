@@ -39,6 +39,7 @@ type ColorConfig struct {
 	BlockQuote  string `toml:"blockquote"`
 	Image       string `toml:"image"`
 	HRule       string `toml:"hrule"`
+	Loader      string `toml:"loader"`
 	ActionBar   string `toml:"action_bar"`
 	ActionBarBg string `toml:"action_bar_bg"`
 	StatusBar   string `toml:"status_bar"`
@@ -68,6 +69,7 @@ func Default() Config {
 			BlockQuote:  "teal",
 			Image:       "green",
 			HRule:       "gray",
+			Loader:      "yellow",
 			ActionBar:   "black",
 			ActionBarBg: "white",
 			StatusBar:   "gray",
@@ -154,6 +156,9 @@ func applyColorDefaults(dst *ColorConfig, def ColorConfig) {
 	}
 	if dst.HRule == "" {
 		dst.HRule = def.HRule
+	}
+	if dst.Loader == "" {
+		dst.Loader = def.Loader
 	}
 	if dst.ActionBar == "" {
 		dst.ActionBar = def.ActionBar
@@ -414,6 +419,7 @@ noscript_bg = "gray"
 blockquote  = "teal"
 image       = "green"
 hrule       = "gray"
+loader      = "yellow"
 action_bar  = "black"
 action_bar_bg = "white"
 status_bar  = "gray"

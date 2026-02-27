@@ -965,12 +965,17 @@ func (b *Browser) submitWithStatusAnimation(actionURL, method string, values url
 		ch <- submitResult{result: result, err: err}
 	}()
 
-	ticker := time.NewTicker(120 * time.Millisecond)
+	ticker := time.NewTicker(70 * time.Millisecond)
 	defer ticker.Stop()
 
 	step := 0
 	for {
-		b.UI.SetStatus(fmt.Sprintf("%s Submitting %s", loadingFrame(step), shortenForStatus(actionURL, 46)))
+		frame := loadingFrame(step)
+		b.UI.SetStatusWithAccent(
+			fmt.Sprintf("%s Submitting %s", frame, shortenForStatus(actionURL, 46)),
+			len([]rune(frame)),
+			b.Cfg.Colors.Loader,
+		)
 		b.UI.Draw()
 
 		select {
@@ -1141,12 +1146,17 @@ func (b *Browser) fetchWithStatusAnimation(rawURL, label string) (*fetch.Result,
 		ch <- fetchResult{result: result, err: err}
 	}()
 
-	ticker := time.NewTicker(120 * time.Millisecond)
+	ticker := time.NewTicker(70 * time.Millisecond)
 	defer ticker.Stop()
 
 	step := 0
 	for {
-		b.UI.SetStatus(fmt.Sprintf("%s %s %s", loadingFrame(step), label, shortenForStatus(rawURL, 46)))
+		frame := loadingFrame(step)
+		b.UI.SetStatusWithAccent(
+			fmt.Sprintf("%s %s %s", frame, label, shortenForStatus(rawURL, 46)),
+			len([]rune(frame)),
+			b.Cfg.Colors.Loader,
+		)
 		b.UI.Draw()
 
 		select {
@@ -1162,15 +1172,13 @@ func (b *Browser) fetchWithStatusAnimation(rawURL, label string) (*fetch.Result,
 }
 
 func loadingFrame(step int) string {
-	const width = 8
-	pos := step % (2*width - 2)
-	if pos >= width {
-		pos = 2*width - 2 - pos
+	frames := [...]string{
+		"◐",
+		"◓",
+		"◑",
+		"◒",
 	}
-
-	bar := []rune("        ")
-	bar[pos] = '▓'
-	return "▌" + string(bar) + "▌"
+	return frames[step%len(frames)]
 }
 
 func shortenForStatus(s string, maxRunes int) string {

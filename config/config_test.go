@@ -72,6 +72,9 @@ func TestDefault(t *testing.T) {
 	if cfg.Colors.Image != "green" {
 		t.Errorf("expected default image color 'green', got %q", cfg.Colors.Image)
 	}
+	if cfg.Colors.Loader != "yellow" {
+		t.Errorf("expected default loader color 'yellow', got %q", cfg.Colors.Loader)
+	}
 }
 
 func TestVersion(t *testing.T) {
@@ -141,6 +144,9 @@ func TestAutoCreateConfig(t *testing.T) {
 	if !strings.Contains(string(content), "status_bar_bg") {
 		t.Error("expected auto-created config to include status_bar_bg")
 	}
+	if !strings.Contains(string(content), "loader") {
+		t.Error("expected auto-created config to include loader")
+	}
 }
 
 func TestLoadMissingFile(t *testing.T) {
@@ -176,6 +182,7 @@ follow_meta_redirects = false
 [colors]
 link = "cyan"
 heading = "green"
+loader = "orange"
 `
 	configPath := filepath.Join(configDir, "config.toml")
 	if err := os.WriteFile(configPath, []byte(configContent), 0o644); err != nil {
@@ -223,6 +230,9 @@ heading = "green"
 	}
 	if cfg.Colors.Link != "cyan" {
 		t.Errorf("expected 'cyan', got %q", cfg.Colors.Link)
+	}
+	if cfg.Colors.Loader != "orange" {
+		t.Errorf("expected 'orange', got %q", cfg.Colors.Loader)
 	}
 	// Unset values should keep defaults.
 	if cfg.Colors.Code != "green" {

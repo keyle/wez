@@ -83,9 +83,11 @@ type UI struct {
 	formInputMasked  bool
 
 	// Status
-	StatusMsg   string
-	StatusLink  string // link URL shown in status bar
-	statusAlert bool
+	StatusMsg         string
+	StatusLink        string // link URL shown in status bar
+	statusAlert       bool
+	statusAccentRunes int
+	statusAccentColor string
 
 	// Pending key for multi-key sequences (e.g. gg)
 	pendingSeq string
@@ -237,12 +239,27 @@ func (u *UI) RestoreViewport(scrollY, cursorY, cursorX int) {
 func (u *UI) SetStatus(msg string) {
 	u.StatusMsg = msg
 	u.statusAlert = false
+	u.statusAccentRunes = 0
+	u.statusAccentColor = ""
 }
 
 // SetStatusAlert sets a highlighted status message.
 func (u *UI) SetStatusAlert(msg string) {
 	u.StatusMsg = msg
 	u.statusAlert = true
+	u.statusAccentRunes = 0
+	u.statusAccentColor = ""
+}
+
+// SetStatusWithAccent sets status text with a colored prefix segment.
+func (u *UI) SetStatusWithAccent(msg string, accentRunes int, accentColor string) {
+	u.StatusMsg = msg
+	u.statusAlert = false
+	if accentRunes < 0 {
+		accentRunes = 0
+	}
+	u.statusAccentRunes = accentRunes
+	u.statusAccentColor = accentColor
 }
 
 // Draw renders the current state to the terminal.
@@ -374,7 +391,19 @@ func (u *UI) Draw() {
 		rightStatus = fmt.Sprintf("%d/%d %d%% | wez %s", u.CursorY+1, total, pct, config.Version)
 	}
 
-	drawString(u.Screen, 0, h-1, truncate(leftStatus, w/2), statusStyle)
+	leftStatus = truncate(leftStatus, w/2)
+	drawString(u.Screen, 0, h-1, leftStatus, statusStyle)
+	if !u.statusAlert && u.statusAccentRunes > 0 && leftStatus != "" {
+		runes := []rune(leftStatus)
+		accentLen := u.statusAccentRunes
+		if accentLen > len(runes) {
+			accentLen = len(runes)
+		}
+		if accentLen > 0 {
+			accentStyle := statusStyle.Foreground(config.ParseColor(u.statusAccentColor))
+			drawString(u.Screen, 0, h-1, string(runes[:accentLen]), accentStyle)
+		}
+	}
 	drawString(u.Screen, w-runewidth.StringWidth(rightStatus), h-1, rightStatus, statusStyle)
 
 	// Center: title + URL.
@@ -385,7 +414,7 @@ func (u *UI) Draw() {
 		} else {
 			titleURL = u.Doc.URL
 		}
-		leftLen := runewidth.StringWidth(truncate(leftStatus, w/2))
+		leftLen := runewidth.StringWidth(leftStatus)
 		rightLen := runewidth.StringWidth(rightStatus)
 		maxCenter := w - leftLen - rightLen - 4
 		if maxCenter > 10 {
