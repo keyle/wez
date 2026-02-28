@@ -250,11 +250,8 @@ loader = "orange"
 	if cfg.Colors.Loader != "orange" {
 		t.Errorf("expected 'orange', got %q", cfg.Colors.Loader)
 	}
-	// Unset values should keep defaults.
-	if cfg.Colors.Code != "green" {
-		// Code keeps its default since we didn't override it.
-		// Actually TOML partial decode: the whole [colors] section was decoded,
-		// so unset fields get zero values. Let me adjust the test.
+	if cfg.Colors.Code != "teal" {
+		t.Errorf("expected default code color 'teal', got %q", cfg.Colors.Code)
 	}
 }
 

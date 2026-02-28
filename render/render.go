@@ -996,7 +996,6 @@ func (r *renderer) handleImage(n *html.Node) {
 	}
 	label += "]"
 
-	startCol := r.curCol
 	span := Span{
 		Text:       label,
 		Style:      r.currentStyle(),
@@ -1006,7 +1005,6 @@ func (r *renderer) handleImage(n *html.Node) {
 	}
 	r.curSpans = append(r.curSpans, span)
 	r.curCol += runewidth.StringWidth(label)
-	_ = startCol
 
 	r.color = oldColor
 }

@@ -66,8 +66,25 @@ type UI struct {
 	Cfg    config.Config
 	Keymap *keymap.Keymap
 
+	stylesReady bool
+
+	actionBarStyle   tcell.Style
+	statusBarStyle   tcell.Style
+	statusAlertStyle tcell.Style
+
+	colorLink       tcell.Color
+	colorVisited    tcell.Color
+	colorHeading    tcell.Color
+	colorCode       tcell.Color
+	colorNoscript   tcell.Color
+	colorBlockQuote tcell.Color
+	colorImage      tcell.Color
+	colorHRule      tcell.Color
+	colorNoscriptBg tcell.Color
+
 	// Document
-	Doc *render.Document
+	Doc           *render.Document
+	docStatusText string
 
 	// Viewport
 	ScrollY int
@@ -88,6 +105,7 @@ type UI struct {
 	statusAlert       bool
 	statusAccentRunes int
 	statusAccentColor string
+	rightStatusBuf    []byte
 
 	// Pending key for multi-key sequences (e.g. gg)
 	pendingSeq string
@@ -131,6 +149,7 @@ func New(cfg config.Config, km *keymap.Keymap) (*UI, error) {
 		Keymap:           km,
 		Mode:             ModeNormal,
 		formInputControl: -1,
+		rightStatusBuf:   make([]byte, 0, 64),
 	}, nil
 }
 
@@ -180,6 +199,7 @@ func (u *UI) Resume() error {
 // SetDocument sets the current document and resets the viewport.
 func (u *UI) SetDocument(doc *render.Document) {
 	u.Doc = doc
+	u.docStatusText = buildDocStatusText(doc)
 	u.ScrollY = 0
 	u.CursorY = 0
 	u.CursorX = 0
@@ -262,8 +282,73 @@ func (u *UI) SetStatusWithAccent(msg string, accentRunes int, accentColor string
 	u.statusAccentColor = accentColor
 }
 
+func buildDocStatusText(doc *render.Document) string {
+	if doc == nil {
+		return ""
+	}
+	if doc.Title != "" {
+		return doc.Title + " - " + doc.URL
+	}
+	return doc.URL
+}
+
+func (u *UI) ensureStyleCache() {
+	if u.stylesReady {
+		return
+	}
+
+	u.actionBarStyle = tcell.StyleDefault.
+		Background(config.ParseColor(u.Cfg.Colors.ActionBarBg)).
+		Foreground(config.ParseColor(u.Cfg.Colors.ActionBar))
+	u.statusBarStyle = tcell.StyleDefault.
+		Background(config.ParseColor(u.Cfg.Colors.StatusBarBg)).
+		Foreground(config.ParseColor(u.Cfg.Colors.StatusBar))
+	u.statusAlertStyle = tcell.StyleDefault.Background(tcell.ColorYellow).Foreground(tcell.ColorBlack)
+
+	u.colorLink = config.ParseColor(u.Cfg.Colors.Link)
+	u.colorVisited = config.ParseColor(u.Cfg.Colors.VisitedLink)
+	u.colorHeading = config.ParseColor(u.Cfg.Colors.Heading)
+	u.colorCode = config.ParseColor(u.Cfg.Colors.Code)
+	u.colorNoscript = config.ParseColor(u.Cfg.Colors.Noscript)
+	u.colorBlockQuote = config.ParseColor(u.Cfg.Colors.BlockQuote)
+	u.colorImage = config.ParseColor(u.Cfg.Colors.Image)
+	u.colorHRule = config.ParseColor(u.Cfg.Colors.HRule)
+	u.colorNoscriptBg = config.ParseColor(u.Cfg.Colors.NoscriptBg)
+
+	u.stylesReady = true
+}
+
+func (u *UI) buildRightStatus(contentHeight int) []byte {
+	u.rightStatusBuf = u.rightStatusBuf[:0]
+
+	if u.Doc == nil || len(u.Doc.Lines) == 0 {
+		u.rightStatusBuf = append(u.rightStatusBuf, "wez "...)
+		u.rightStatusBuf = append(u.rightStatusBuf, config.Version...)
+		return u.rightStatusBuf
+	}
+
+	total := len(u.Doc.Lines)
+	pct := 0
+	if contentHeight > 0 && total > contentHeight {
+		pct = (u.ScrollY * 100) / (total - contentHeight)
+	} else if total <= contentHeight {
+		pct = 100
+	}
+
+	u.rightStatusBuf = strconv.AppendInt(u.rightStatusBuf, int64(u.CursorY+1), 10)
+	u.rightStatusBuf = append(u.rightStatusBuf, '/')
+	u.rightStatusBuf = strconv.AppendInt(u.rightStatusBuf, int64(total), 10)
+	u.rightStatusBuf = append(u.rightStatusBuf, ' ')
+	u.rightStatusBuf = strconv.AppendInt(u.rightStatusBuf, int64(pct), 10)
+	u.rightStatusBuf = append(u.rightStatusBuf, '%', ' ', '|', ' ')
+	u.rightStatusBuf = append(u.rightStatusBuf, "wez "...)
+	u.rightStatusBuf = append(u.rightStatusBuf, config.Version...)
+	return u.rightStatusBuf
+}
+
 // Draw renders the current state to the terminal.
 func (u *UI) Draw() {
+	u.ensureStyleCache()
 	u.Screen.Clear()
 	w, h := u.Screen.Size()
 
@@ -334,9 +419,7 @@ func (u *UI) Draw() {
 
 	// Draw action bar (URL/search/form input) if active.
 	if actionBarY >= 0 {
-		barStyle := tcell.StyleDefault.
-			Background(config.ParseColor(u.Cfg.Colors.ActionBarBg)).
-			Foreground(config.ParseColor(u.Cfg.Colors.ActionBar))
+		barStyle := u.actionBarStyle
 		for x := 0; x < w; x++ {
 			u.Screen.SetContent(x, actionBarY, ' ', nil, barStyle)
 		}
@@ -356,11 +439,9 @@ func (u *UI) Draw() {
 	}
 
 	// Draw status bar.
-	statusStyle := tcell.StyleDefault.
-		Background(config.ParseColor(u.Cfg.Colors.StatusBarBg)).
-		Foreground(config.ParseColor(u.Cfg.Colors.StatusBar))
+	statusStyle := u.statusBarStyle
 	if u.statusAlert {
-		statusStyle = tcell.StyleDefault.Background(tcell.ColorYellow).Foreground(tcell.ColorBlack)
+		statusStyle = u.statusAlertStyle
 	}
 	for x := 0; x < w; x++ {
 		u.Screen.SetContent(x, h-1, ' ', nil, statusStyle)
@@ -379,53 +460,30 @@ func (u *UI) Draw() {
 	}
 
 	// Right: version + position info.
-	rightStatus := "wez " + config.Version
-	if u.Doc != nil && len(u.Doc.Lines) > 0 {
-		total := len(u.Doc.Lines)
-		pct := 0
-		if contentHeight > 0 && total > contentHeight {
-			pct = (u.ScrollY * 100) / (total - contentHeight)
-		} else if total <= contentHeight {
-			pct = 100
-		}
-		rightStatus = fmt.Sprintf("%d/%d %d%% | wez %s", u.CursorY+1, total, pct, config.Version)
-	}
+	rightStatus := u.buildRightStatus(contentHeight)
+	rightLen := len(rightStatus)
 
-	leftStatus = truncate(leftStatus, w/2)
-	drawString(u.Screen, 0, h-1, leftStatus, statusStyle)
+	leftLen := drawStringTruncated(u.Screen, 0, h-1, leftStatus, w/2, statusStyle)
 	if !u.statusAlert && u.statusAccentRunes > 0 && leftStatus != "" {
-		runes := []rune(leftStatus)
-		accentLen := u.statusAccentRunes
-		if accentLen > len(runes) {
-			accentLen = len(runes)
-		}
-		if accentLen > 0 {
-			accentStyle := statusStyle.Foreground(config.ParseColor(u.statusAccentColor))
-			drawString(u.Screen, 0, h-1, string(runes[:accentLen]), accentStyle)
-		}
+		accentStyle := statusStyle.Foreground(config.ParseColor(u.statusAccentColor))
+		drawStringRunesN(u.Screen, 0, h-1, leftStatus, u.statusAccentRunes, accentStyle)
 	}
-	drawString(u.Screen, w-runewidth.StringWidth(rightStatus), h-1, rightStatus, statusStyle)
+	rightX := w - rightLen
+	if rightX < 0 {
+		rightX = 0
+	}
+	drawBytes(u.Screen, rightX, h-1, rightStatus, statusStyle)
 
 	// Center: title + URL.
 	if u.Doc != nil {
-		titleURL := ""
-		if u.Doc.Title != "" {
-			titleURL = u.Doc.Title + " - " + u.Doc.URL
-		} else {
-			titleURL = u.Doc.URL
-		}
-		leftLen := runewidth.StringWidth(leftStatus)
-		rightLen := runewidth.StringWidth(rightStatus)
 		maxCenter := w - leftLen - rightLen - 4
 		if maxCenter > 10 {
-			titleURL = truncate(titleURL, maxCenter)
 			centerX := leftLen + 2
-			drawString(u.Screen, centerX, h-1, titleURL, statusStyle)
+			drawStringTruncated(u.Screen, centerX, h-1, u.docStatusText, maxCenter, statusStyle)
 		}
 	}
 
 	u.Screen.Show()
-	_ = contentHeight
 }
 
 // HandleEvent processes a tcell event and returns an action.
@@ -1523,25 +1581,25 @@ func (u *UI) spanStyle(span render.Span) tcell.Style {
 
 	switch span.Style.Color {
 	case "link":
-		style = style.Foreground(config.ParseColor(u.Cfg.Colors.Link))
+		style = style.Foreground(u.colorLink)
 	case "visited_link":
-		style = style.Foreground(config.ParseColor(u.Cfg.Colors.VisitedLink))
+		style = style.Foreground(u.colorVisited)
 	case "heading":
-		style = style.Foreground(config.ParseColor(u.Cfg.Colors.Heading))
+		style = style.Foreground(u.colorHeading)
 	case "code":
-		style = style.Foreground(config.ParseColor(u.Cfg.Colors.Code))
+		style = style.Foreground(u.colorCode)
 	case "noscript":
-		style = style.Foreground(config.ParseColor(u.Cfg.Colors.Noscript))
+		style = style.Foreground(u.colorNoscript)
 	case "blockquote":
-		style = style.Foreground(config.ParseColor(u.Cfg.Colors.BlockQuote))
+		style = style.Foreground(u.colorBlockQuote)
 	case "image":
-		style = style.Foreground(config.ParseColor(u.Cfg.Colors.Image))
+		style = style.Foreground(u.colorImage)
 	case "hrule":
-		style = style.Foreground(config.ParseColor(u.Cfg.Colors.HRule))
+		style = style.Foreground(u.colorHRule)
 	}
 
 	if span.Style.BgColor == "noscript_bg" {
-		style = style.Background(config.ParseColor(u.Cfg.Colors.NoscriptBg))
+		style = style.Background(u.colorNoscriptBg)
 	}
 
 	if span.Style.Bold {
@@ -1566,6 +1624,15 @@ func (u *UI) spanStyle(span render.Span) tcell.Style {
 
 // --- Helpers ---
 
+func drawBytes(screen tcell.Screen, x, y int, b []byte, style tcell.Style) {
+	for _, c := range b {
+		if x >= 0 {
+			screen.SetContent(x, y, rune(c), nil, style)
+		}
+		x++
+	}
+}
+
 func drawString(screen tcell.Screen, x, y int, s string, style tcell.Style) {
 	for _, r := range s {
 		if x >= 0 {
@@ -1575,14 +1642,73 @@ func drawString(screen tcell.Screen, x, y int, s string, style tcell.Style) {
 	}
 }
 
-func truncate(s string, maxLen int) string {
-	if len(s) <= maxLen {
-		return s
+func drawStringTruncated(screen tcell.Screen, x, y int, s string, maxWidth int, style tcell.Style) int {
+	if maxWidth <= 0 || s == "" {
+		return 0
 	}
-	if maxLen <= 3 {
-		return s[:maxLen]
+
+	fullWidth := runewidth.StringWidth(s)
+	if fullWidth <= maxWidth {
+		drawString(screen, x, y, s, style)
+		return fullWidth
 	}
-	return s[:maxLen-3] + "..."
+
+	if maxWidth <= 3 {
+		drawn := 0
+		for _, r := range s {
+			rw := runewidth.RuneWidth(r)
+			if rw < 1 {
+				rw = 1
+			}
+			if drawn+rw > maxWidth {
+				break
+			}
+			screen.SetContent(x+drawn, y, r, nil, style)
+			drawn += rw
+		}
+		return drawn
+	}
+
+	budget := maxWidth - 3
+	drawn := 0
+	for _, r := range s {
+		rw := runewidth.RuneWidth(r)
+		if rw < 1 {
+			rw = 1
+		}
+		if drawn+rw > budget {
+			break
+		}
+		screen.SetContent(x+drawn, y, r, nil, style)
+		drawn += rw
+	}
+
+	for i := 0; i < 3; i++ {
+		screen.SetContent(x+drawn+i, y, '.', nil, style)
+	}
+	return drawn + 3
+}
+
+func drawStringRunesN(screen tcell.Screen, x, y int, s string, maxRunes int, style tcell.Style) int {
+	if maxRunes <= 0 || s == "" {
+		return 0
+	}
+
+	drawnRunes := 0
+	drawnCells := 0
+	for _, r := range s {
+		if drawnRunes >= maxRunes {
+			break
+		}
+		rw := runewidth.RuneWidth(r)
+		if rw < 1 {
+			rw = 1
+		}
+		screen.SetContent(x+drawnCells, y, r, nil, style)
+		drawnRunes++
+		drawnCells += rw
+	}
+	return drawnCells
 }
 
 func lineText(line render.Line) string {
