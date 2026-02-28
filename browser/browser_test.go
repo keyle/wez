@@ -382,6 +382,7 @@ func TestRestoreFromSnapshotUsesBufferedDocument(t *testing.T) {
 	b.currentURL = docA.URL
 	b.sourceURL = docA.URL
 	b.sourceBody = "source-a"
+	b.sourceType = "text/html"
 	b.UI.SetDocument(docA)
 	b.UI.RestoreViewport(0, 0, 0)
 
@@ -402,6 +403,7 @@ func TestRestoreFromSnapshotUsesBufferedDocument(t *testing.T) {
 	b.currentURL = docB.URL
 	b.sourceURL = docB.URL
 	b.sourceBody = "source-b"
+	b.sourceType = "application/json"
 	b.UI.SetDocument(docB)
 
 	if !b.restoreFromSnapshot(state) {
@@ -415,6 +417,9 @@ func TestRestoreFromSnapshotUsesBufferedDocument(t *testing.T) {
 	}
 	if b.sourceBody != "source-a" {
 		t.Fatalf("expected buffered source body to be restored, got %q", b.sourceBody)
+	}
+	if b.sourceType != "text/html" {
+		t.Fatalf("expected buffered source content type to be restored, got %q", b.sourceType)
 	}
 }
 
@@ -593,4 +598,89 @@ func TestWaitForReturnKeyStopsOnEnter(t *testing.T) {
 	if got := r.String(); got != "more" {
 		t.Fatalf("expected remaining input %q after Enter, got %q", "more", got)
 	}
+}
+
+func TestBuildSourceDocFormatsAndHighlightsHTML(t *testing.T) {
+	b := &Browser{
+		sourceURL:  "https://example.com",
+		sourceType: "text/html; charset=utf-8",
+		sourceBody: `<html><body><a href="/x" data-k="v">hi</a></body></html>`,
+	}
+
+	doc := b.buildSourceDoc()
+	if doc == nil {
+		t.Fatal("expected source document")
+	}
+
+	all := docText(doc)
+	if !strings.Contains(all, "<html>") {
+		t.Fatalf("expected pretty-printed html in source doc, got %q", all)
+	}
+
+	hasTagColor := false
+	hasStringColor := false
+	for _, line := range doc.Lines {
+		for _, span := range line.Spans {
+			if span.Style.Color == "link" {
+				hasTagColor = true
+			}
+			if span.Style.Color == "image" {
+				hasStringColor = true
+			}
+		}
+	}
+	if !hasTagColor {
+		t.Fatal("expected syntax highlight for HTML tags")
+	}
+	if !hasStringColor {
+		t.Fatal("expected syntax highlight for HTML strings")
+	}
+}
+
+func TestHighlightedSourceLinesSoftWrap(t *testing.T) {
+	lines := highlightedSourceLines("<html><body><div class=\"verylongclassnameforwrapping\">x</div></body></html>", "text/html", 20)
+	if len(lines) <= 1 {
+		t.Fatalf("expected wrapped source lines, got %d", len(lines))
+	}
+	for i, line := range lines {
+		if w := line.Width(); w > 20 {
+			t.Fatalf("line %d width=%d exceeds wrap width", i, w)
+		}
+	}
+}
+
+func TestExitHistoryViewClearsAuxState(t *testing.T) {
+	prev := &render.Document{URL: "https://example.com", Lines: []render.Line{{}}}
+	b := &Browser{
+		UI:          &ui.UI{},
+		viewActive:  true,
+		viewKind:    "source",
+		viewPrevDoc: prev,
+		viewScrollY: 8,
+		viewCursorY: 13,
+		viewCursorX: 5,
+	}
+
+	b.exitHistoryView()
+
+	if b.viewActive || b.viewKind != "" || b.viewPrevDoc != nil {
+		t.Fatalf("expected aux view state cleared, got active=%v kind=%q prev=%v", b.viewActive, b.viewKind, b.viewPrevDoc)
+	}
+	if b.viewScrollY != 0 || b.viewCursorY != 0 || b.viewCursorX != 0 {
+		t.Fatalf("expected saved viewport fields reset, got %d/%d:%d", b.viewScrollY, b.viewCursorY, b.viewCursorX)
+	}
+}
+
+func docText(doc *render.Document) string {
+	if doc == nil {
+		return ""
+	}
+	var sb strings.Builder
+	for _, line := range doc.Lines {
+		for _, span := range line.Spans {
+			sb.WriteString(span.Text)
+		}
+		sb.WriteByte('\n')
+	}
+	return sb.String()
 }

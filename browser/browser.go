@@ -16,6 +16,10 @@ import (
 	"strings"
 	"time"
 
+	"github.com/alecthomas/chroma/v2"
+	"github.com/alecthomas/chroma/v2/lexers"
+	"github.com/mattn/go-runewidth"
+	"github.com/yosssi/gohtml"
 	"golang.org/x/net/html"
 	"golang.org/x/net/html/atom"
 	"golang.org/x/term"
@@ -58,9 +62,10 @@ type navState struct {
 }
 
 type pageSnapshot struct {
-	Doc        *render.Document
-	SourceURL  string
-	SourceBody string
+	Doc               *render.Document
+	SourceURL         string
+	SourceBody        string
+	SourceContentType string
 }
 
 type navigateOptions struct {
@@ -89,6 +94,7 @@ type Browser struct {
 	currentURL   string
 	sourceURL    string
 	sourceBody   string
+	sourceType   string
 
 	viewActive  bool
 	viewKind    string
@@ -193,6 +199,7 @@ func (b *Browser) applyFetchResult(result *fetch.Result, restore *navState) {
 	if shouldDownload(result.ContentType) {
 		b.sourceURL = ""
 		b.sourceBody = ""
+		b.sourceType = ""
 		savedPath, saveErr := b.saveDownload(result)
 		if saveErr != nil {
 			b.showError(fmt.Sprintf("download failed: %v", saveErr))
@@ -225,6 +232,7 @@ func (b *Browser) applyFetchResult(result *fetch.Result, restore *navState) {
 
 	b.sourceURL = result.FinalURL
 	b.sourceBody = normalizeSourceBody(result.Body)
+	b.sourceType = result.ContentType
 
 	b.currentURL = result.FinalURL
 
@@ -242,9 +250,16 @@ func (b *Browser) leaveAuxView() {
 	if !b.viewActive {
 		return
 	}
+	b.clearAuxViewState()
+}
+
+func (b *Browser) clearAuxViewState() {
 	b.viewActive = false
 	b.viewKind = ""
 	b.viewPrevDoc = nil
+	b.viewScrollY = 0
+	b.viewCursorY = 0
+	b.viewCursorX = 0
 }
 
 func (b *Browser) currentNavState() (navState, bool) {
@@ -362,9 +377,10 @@ func (b *Browser) captureSnapshot() int {
 	b.nextSnapshot++
 	id := b.nextSnapshot
 	b.snapshotByID[id] = pageSnapshot{
-		Doc:        doc,
-		SourceURL:  b.sourceURL,
-		SourceBody: b.sourceBody,
+		Doc:               doc,
+		SourceURL:         b.sourceURL,
+		SourceBody:        b.sourceBody,
+		SourceContentType: b.sourceType,
 	}
 	b.snapshotIDs = append(b.snapshotIDs, id)
 	for len(b.snapshotIDs) > maxPageBuffers {
@@ -389,6 +405,7 @@ func (b *Browser) restoreFromSnapshot(state navState) bool {
 	b.currentURL = state.URL
 	b.sourceURL = snapshot.SourceURL
 	b.sourceBody = snapshot.SourceBody
+	b.sourceType = snapshot.SourceContentType
 	b.UI.SetDocument(snapshot.Doc)
 	b.UI.RestoreViewport(state.ScrollY, state.CursorY, state.CursorX)
 	b.UI.SetStatus("")
@@ -690,14 +707,17 @@ func (b *Browser) exitHistoryView() {
 	if !b.viewActive {
 		return
 	}
-	b.viewActive = false
-	b.viewKind = ""
+	prevDoc := b.viewPrevDoc
+	scrollY := b.viewScrollY
+	cursorY := b.viewCursorY
+	cursorX := b.viewCursorX
+	b.clearAuxViewState()
 
-	if b.viewPrevDoc != nil {
-		b.UI.SetDocument(b.viewPrevDoc)
-		b.UI.ScrollY = b.viewScrollY
-		b.UI.CursorY = b.viewCursorY
-		b.UI.CursorX = b.viewCursorX
+	if prevDoc != nil {
+		b.UI.SetDocument(prevDoc)
+		b.UI.ScrollY = scrollY
+		b.UI.CursorY = cursorY
+		b.UI.CursorX = cursorX
 	} else {
 		b.ShowWelcome()
 	}
@@ -816,6 +836,7 @@ func (b *Browser) clearCache() {
 	b.nextSnapshot = 0
 	b.sourceURL = ""
 	b.sourceBody = ""
+	b.sourceType = ""
 	b.Fetcher = b.newFetcher()
 
 	if b.viewActive && b.viewKind == "history" {
@@ -996,7 +1017,7 @@ func (b *Browser) buildSourceDoc() *render.Document {
 		}
 	}
 
-	bodyDoc := render.RenderPlainText([]byte(b.sourceBody), "about:source-body", width)
+	bodyLines := highlightedSourceLines(b.sourceBody, b.sourceType, width)
 
 	lines := make([]render.Line, 0, 64)
 	lines = append(lines, render.Line{Spans: []render.Span{{
@@ -1008,9 +1029,170 @@ func (b *Browser) buildSourceDoc() *render.Document {
 		lines = append(lines, render.Line{Spans: []render.Span{{Text: b.sourceURL, Style: render.SpanStyle{Color: "code"}, LinkIdx: -1}}})
 	}
 	lines = append(lines, render.Line{})
-	lines = append(lines, bodyDoc.Lines...)
+	lines = append(lines, bodyLines...)
 
 	return &render.Document{Title: "Source", URL: "about:source", Lines: lines}
+}
+
+func highlightedSourceLines(sourceBody, contentType string, width int) []render.Line {
+	if width <= 0 {
+		width = 80
+	}
+
+	text := strings.TrimRight(prettySource(sourceBody, contentType), "\n")
+	if text == "" {
+		return []render.Line{{}}
+	}
+
+	lexer := sourceLexer(contentType, text)
+	if lexer == nil {
+		plain := render.RenderPlainText([]byte(text), "about:source-body", width)
+		return plain.Lines
+	}
+
+	iter, err := lexer.Tokenise(nil, text)
+	if err != nil {
+		plain := render.RenderPlainText([]byte(text), "about:source-body", width)
+		return plain.Lines
+	}
+
+	lines := make([]render.Line, 0, 128)
+	spans := make([]render.Span, 0, 16)
+	col := 0
+
+	flushLine := func() {
+		lineSpans := make([]render.Span, len(spans))
+		copy(lineSpans, spans)
+		lines = append(lines, render.Line{Spans: lineSpans})
+		spans = spans[:0]
+		col = 0
+	}
+
+	appendStyledRune := func(r rune, style render.SpanStyle) {
+		txt := string(r)
+		if len(spans) > 0 && spans[len(spans)-1].Style == style {
+			spans[len(spans)-1].Text += txt
+			return
+		}
+		spans = append(spans, render.Span{Text: txt, Style: style, LinkIdx: -1, ControlIdx: -1})
+	}
+
+	for token := iter(); token != chroma.EOF; token = iter() {
+		style := sourceSpanStyle(token.Type)
+		for _, r := range token.Value {
+			if r == '\r' {
+				continue
+			}
+			if r == '\n' {
+				flushLine()
+				continue
+			}
+
+			rw := runewidth.RuneWidth(r)
+			if rw < 1 {
+				rw = 1
+			}
+
+			if col > 0 && col+rw > width {
+				flushLine()
+			}
+
+			appendStyledRune(r, style)
+			col += rw
+		}
+	}
+
+	if len(spans) > 0 || len(lines) == 0 {
+		flushLine()
+	}
+
+	return lines
+}
+
+func sourceLexer(contentType, text string) chroma.Lexer {
+	ct := strings.ToLower(strings.TrimSpace(contentType))
+	if mediaType, _, err := mime.ParseMediaType(ct); err == nil {
+		ct = mediaType
+	}
+
+	if strings.Contains(ct, "html") || isLikelyHTMLSource(text) {
+		if lx := lexers.Get("html"); lx != nil {
+			return chroma.Coalesce(lx)
+		}
+	}
+
+	if ct != "" {
+		if lx := lexers.MatchMimeType(ct); lx != nil {
+			return chroma.Coalesce(lx)
+		}
+	}
+
+	if lx := lexers.Analyse(text); lx != nil {
+		return chroma.Coalesce(lx)
+	}
+
+	return nil
+}
+
+func sourceSpanStyle(tt chroma.TokenType) render.SpanStyle {
+	style := render.SpanStyle{}
+
+	switch {
+	case tt.InCategory(chroma.Error):
+		style.Color = "noscript"
+		style.BgColor = "noscript_bg"
+		style.Bold = true
+	case tt.InCategory(chroma.Comment):
+		style.Color = "blockquote"
+		style.Italic = true
+	case tt.InCategory(chroma.Keyword):
+		style.Color = "heading"
+		style.Bold = true
+	case tt.InCategory(chroma.NameTag):
+		style.Color = "link"
+		style.Bold = true
+	case tt.InCategory(chroma.NameAttribute):
+		style.Color = "visited_link"
+	case tt.InCategory(chroma.LiteralString):
+		style.Color = "image"
+	case tt.InCategory(chroma.LiteralNumber):
+		style.Color = "code"
+	case tt.InCategory(chroma.Operator), tt.InCategory(chroma.Punctuation):
+		style.Color = "code"
+	}
+
+	return style
+}
+
+func prettySource(sourceBody, contentType string) string {
+	trimmed := strings.TrimSpace(sourceBody)
+	if trimmed == "" {
+		return sourceBody
+	}
+
+	ct := strings.ToLower(strings.TrimSpace(contentType))
+	if mediaType, _, err := mime.ParseMediaType(ct); err == nil {
+		ct = mediaType
+	}
+
+	if strings.Contains(ct, "html") || isLikelyHTMLSource(trimmed) {
+		if pretty := strings.TrimSpace(gohtml.Format(trimmed)); pretty != "" {
+			return pretty
+		}
+	}
+
+	return sourceBody
+}
+
+func isLikelyHTMLSource(s string) bool {
+	v := strings.ToLower(strings.TrimSpace(s))
+	if v == "" {
+		return false
+	}
+	return strings.HasPrefix(v, "<!doctype html") ||
+		strings.HasPrefix(v, "<html") ||
+		strings.Contains(v, "<head") ||
+		strings.Contains(v, "<body")
 }
 
 func (b *Browser) favoriteRemoveHint() string {
