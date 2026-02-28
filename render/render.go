@@ -48,13 +48,15 @@ func RenderWithVisited(htmlBytes []byte, pageURL string, width int, isVisited fu
 	r.walkChildren(body)
 	r.flushLine()
 
-	lines, links := compactVerticalWhitespace(r.lines, r.links)
+	lines, links, mapping := compactVerticalWhitespaceWithMapping(r.lines, r.links)
+	anchors := remapAnchors(r.anchors, mapping, len(lines))
 
 	return &Document{
 		Title:    r.title,
 		URL:      pageURL,
 		Lines:    lines,
 		Links:    links,
+		Anchors:  anchors,
 		Forms:    r.forms,
 		Controls: r.controls,
 	}
@@ -167,6 +169,9 @@ type renderer struct {
 
 	// Link visit callback.
 	isVisited func(string) bool
+
+	// Named anchors by fragment to line index.
+	anchors map[string]int
 }
 
 func (r *renderer) currentStyle() SpanStyle {
@@ -245,8 +250,13 @@ func lineIsBlank(line Line) bool {
 }
 
 func compactVerticalWhitespace(lines []Line, links []Link) ([]Line, []Link) {
+	outLines, outLinks, _ := compactVerticalWhitespaceWithMapping(lines, links)
+	return outLines, outLinks
+}
+
+func compactVerticalWhitespaceWithMapping(lines []Line, links []Link) ([]Line, []Link, []int) {
 	if len(lines) == 0 {
-		return lines, links
+		return lines, links, nil
 	}
 
 	mapping := make([]int, len(lines))
@@ -279,7 +289,7 @@ func compactVerticalWhitespace(lines []Line, links []Link) ([]Line, []Link) {
 	}
 
 	if len(out) == len(lines) {
-		return lines, links
+		return lines, links, mapping
 	}
 
 	outLinks := make([]Link, 0, len(links))
@@ -302,7 +312,58 @@ func compactVerticalWhitespace(lines []Line, links []Link) ([]Line, []Link) {
 		}
 	}
 
-	return out, outLinks
+	return out, outLinks, mapping
+}
+
+func remapAnchors(anchors map[string]int, mapping []int, outLineCount int) map[string]int {
+	if len(anchors) == 0 {
+		return nil
+	}
+
+	out := make(map[string]int, len(anchors))
+	for key, line := range anchors {
+		out[key] = remapLineThroughMapping(line, mapping, outLineCount)
+	}
+	return out
+}
+
+func remapLineThroughMapping(line int, mapping []int, outLineCount int) int {
+	if outLineCount <= 0 {
+		return 0
+	}
+	if len(mapping) == 0 {
+		if line < 0 {
+			return 0
+		}
+		if line >= outLineCount {
+			return outLineCount - 1
+		}
+		return line
+	}
+
+	if line >= 0 && line < len(mapping) {
+		if mapped := mapping[line]; mapped >= 0 {
+			return mapped
+		}
+		for i := line + 1; i < len(mapping); i++ {
+			if mapped := mapping[i]; mapped >= 0 {
+				return mapped
+			}
+		}
+		for i := line - 1; i >= 0; i-- {
+			if mapped := mapping[i]; mapped >= 0 {
+				return mapped
+			}
+		}
+	}
+
+	if line < 0 {
+		return 0
+	}
+	if line >= outLineCount {
+		return outLineCount - 1
+	}
+	return line
 }
 
 func (r *renderer) addText(text string) {
@@ -455,6 +516,7 @@ func (r *renderer) walk(n *html.Node) {
 func (r *renderer) handleElement(n *html.Node) {
 	tag := n.DataAtom
 	tagName := n.Data
+	r.registerElementAnchors(n)
 
 	switch tag {
 	case atom.Script, atom.Style:
@@ -686,6 +748,42 @@ func (r *renderer) handleElement(n *html.Node) {
 	}
 }
 
+func (r *renderer) registerElementAnchors(n *html.Node) {
+	if n == nil {
+		return
+	}
+
+	id := strings.TrimSpace(getAttr(n, "id"))
+	if id != "" {
+		r.registerAnchor(id)
+	}
+	if n.DataAtom == atom.A {
+		name := strings.TrimSpace(getAttr(n, "name"))
+		if name != "" {
+			r.registerAnchor(name)
+		}
+	}
+}
+
+func (r *renderer) registerAnchor(name string) {
+	key := strings.TrimSpace(name)
+	if key == "" {
+		return
+	}
+	if r.anchors == nil {
+		r.anchors = make(map[string]int)
+	}
+
+	line := len(r.lines)
+	if _, exists := r.anchors[key]; !exists {
+		r.anchors[key] = line
+	}
+	lowerKey := strings.ToLower(key)
+	if _, exists := r.anchors[lowerKey]; !exists {
+		r.anchors[lowerKey] = line
+	}
+}
+
 func (r *renderer) handleHeading(n *html.Node, tagName string) {
 	r.ensureBlankLine()
 
@@ -887,7 +985,12 @@ func (r *renderer) handleImage(n *html.Node) {
 	oldColor := r.color
 	r.color = "image"
 
-	label := "[IMG"
+	labelKind := "IMG"
+	if isSVGImageReference(src, resolved) {
+		labelKind = "SVG"
+	}
+
+	label := "[" + labelKind
 	if alt != "" {
 		label += ": " + alt
 	}
@@ -1300,7 +1403,12 @@ func (r *renderer) resolveURL(href string) string {
 	}
 	// Fragment.
 	if strings.HasPrefix(href, "#") {
-		return r.pageURL + href
+		base, err := url.Parse(r.pageURL)
+		if err != nil {
+			return r.pageURL + href
+		}
+		base.Fragment = strings.TrimPrefix(href, "#")
+		return base.String()
 	}
 	// Resolve relative.
 	base, err := url.Parse(r.pageURL)
@@ -1312,6 +1420,38 @@ func (r *renderer) resolveURL(href string) string {
 		return href
 	}
 	return base.ResolveReference(ref).String()
+}
+
+func isSVGImageReference(src, resolved string) bool {
+	v := strings.ToLower(strings.TrimSpace(src))
+	if strings.HasPrefix(v, "data:image/svg+xml") {
+		return true
+	}
+	return isSVGURL(v) || isSVGURL(resolved)
+}
+
+func isSVGURL(raw string) bool {
+	v := strings.ToLower(strings.TrimSpace(raw))
+	if v == "" {
+		return false
+	}
+
+	if strings.HasPrefix(v, "data:image/svg+xml") {
+		return true
+	}
+
+	if u, err := url.Parse(v); err == nil {
+		p := strings.ToLower(strings.TrimSpace(u.Path))
+		if strings.HasSuffix(p, ".svg") || strings.HasSuffix(p, ".svgz") {
+			return true
+		}
+	}
+
+	if cut := strings.IndexAny(v, "?#"); cut >= 0 {
+		v = v[:cut]
+	}
+
+	return strings.HasSuffix(v, ".svg") || strings.HasSuffix(v, ".svgz")
 }
 
 func isJavaScriptURL(raw string) bool {

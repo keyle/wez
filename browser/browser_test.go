@@ -1,6 +1,7 @@
 package browser
 
 import (
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -327,5 +328,250 @@ func TestApplyFetchResultRestoresViewport(t *testing.T) {
 
 	if b.UI.ScrollY != 5 || b.UI.CursorY != 9 || b.UI.CursorX != 2 {
 		t.Fatalf("expected restored viewport 5/9:2, got %d/%d:%d", b.UI.ScrollY, b.UI.CursorY, b.UI.CursorX)
+	}
+}
+
+func TestCaptureSnapshotTrimsToMaxPageBuffers(t *testing.T) {
+	b := &Browser{UI: &ui.UI{}}
+	ids := make([]int, 0, maxPageBuffers+5)
+
+	for i := 0; i < maxPageBuffers+5; i++ {
+		b.UI.Doc = &render.Document{
+			URL:   fmt.Sprintf("https://example.com/%d", i),
+			Lines: []render.Line{{Spans: []render.Span{{Text: "x", LinkIdx: -1}}}},
+		}
+		ids = append(ids, b.captureSnapshot())
+	}
+
+	if len(b.snapshotIDs) != maxPageBuffers {
+		t.Fatalf("expected %d snapshots, got %d", maxPageBuffers, len(b.snapshotIDs))
+	}
+	if len(b.snapshotByID) != maxPageBuffers {
+		t.Fatalf("expected %d snapshot entries, got %d", maxPageBuffers, len(b.snapshotByID))
+	}
+
+	if _, ok := b.snapshotByID[ids[0]]; ok {
+		t.Fatalf("expected oldest snapshot %d to be evicted", ids[0])
+	}
+	if _, ok := b.snapshotByID[ids[len(ids)-1]]; !ok {
+		t.Fatalf("expected newest snapshot %d to remain", ids[len(ids)-1])
+	}
+}
+
+func TestRestoreFromSnapshotUsesBufferedDocument(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+
+	sim := tcell.NewSimulationScreen("UTF-8")
+	if err := sim.Init(); err != nil {
+		t.Fatalf("failed to init simulation screen: %v", err)
+	}
+	defer sim.Fini()
+	sim.SetSize(80, 24)
+
+	cfg := config.Default()
+	b := &Browser{
+		UI: &ui.UI{Screen: sim, Cfg: cfg},
+	}
+
+	docA := &render.Document{
+		URL:   "https://example.com/a",
+		Title: "Page A",
+		Lines: []render.Line{{Spans: []render.Span{{Text: "A", LinkIdx: -1}}}},
+	}
+	b.currentURL = docA.URL
+	b.sourceURL = docA.URL
+	b.sourceBody = "source-a"
+	b.UI.SetDocument(docA)
+	b.UI.RestoreViewport(0, 0, 0)
+
+	state, ok := b.currentNavState()
+	if !ok {
+		t.Fatal("expected current nav state")
+	}
+	state = b.navStateWithSnapshot(state)
+	state.ScrollY = 0
+	state.CursorY = 0
+	state.CursorX = 0
+
+	docB := &render.Document{
+		URL:   "https://example.com/b",
+		Title: "Page B",
+		Lines: []render.Line{{Spans: []render.Span{{Text: "B", LinkIdx: -1}}}},
+	}
+	b.currentURL = docB.URL
+	b.sourceURL = docB.URL
+	b.sourceBody = "source-b"
+	b.UI.SetDocument(docB)
+
+	if !b.restoreFromSnapshot(state) {
+		t.Fatal("expected snapshot restore to succeed")
+	}
+	if b.currentURL != docA.URL {
+		t.Fatalf("expected current URL %q, got %q", docA.URL, b.currentURL)
+	}
+	if b.UI.Doc != docA {
+		t.Fatal("expected buffered document to be restored")
+	}
+	if b.sourceBody != "source-a" {
+		t.Fatalf("expected buffered source body to be restored, got %q", b.sourceBody)
+	}
+}
+
+func TestRestoreFromSnapshotRefreshesVisitedLinkStyles(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+
+	sim := tcell.NewSimulationScreen("UTF-8")
+	if err := sim.Init(); err != nil {
+		t.Fatalf("failed to init simulation screen: %v", err)
+	}
+	defer sim.Fini()
+	sim.SetSize(80, 24)
+
+	cfg := config.Default()
+	seen := history.NewSeen()
+	if err := seen.Add("https://example.com/visited"); err != nil {
+		t.Fatalf("failed adding seen URL: %v", err)
+	}
+
+	b := &Browser{
+		UI:   &ui.UI{Screen: sim, Cfg: cfg},
+		Seen: seen,
+	}
+
+	docA := &render.Document{
+		URL: "https://example.com/a",
+		Lines: []render.Line{{Spans: []render.Span{{
+			Text:    "visited link",
+			Style:   render.SpanStyle{Underline: true, Color: "link"},
+			LinkIdx: 0,
+		}}}},
+		Links: []render.Link{{URL: "https://example.com/visited", Line: 0, Col: 0}},
+	}
+	b.currentURL = docA.URL
+	b.UI.SetDocument(docA)
+
+	state, ok := b.currentNavState()
+	if !ok {
+		t.Fatal("expected current nav state")
+	}
+	state = b.navStateWithSnapshot(state)
+
+	b.UI.SetDocument(&render.Document{URL: "https://example.com/b", Lines: []render.Line{{}}})
+	b.currentURL = "https://example.com/b"
+
+	if !b.restoreFromSnapshot(state) {
+		t.Fatal("expected snapshot restore to succeed")
+	}
+	if got := b.UI.Doc.Lines[0].Spans[0].Style.Color; got != "visited_link" {
+		t.Fatalf("expected restored link color visited_link, got %q", got)
+	}
+}
+
+func TestNavigateToSameDocumentAnchorJumpsWithoutReload(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+
+	sim := tcell.NewSimulationScreen("UTF-8")
+	if err := sim.Init(); err != nil {
+		t.Fatalf("failed to init simulation screen: %v", err)
+	}
+	defer sim.Fini()
+	sim.SetSize(80, 24)
+
+	cfg := config.Default()
+	lines := make([]render.Line, 0, 40)
+	for i := 0; i < 40; i++ {
+		lines = append(lines, render.Line{Spans: []render.Span{{Text: fmt.Sprintf("line-%d", i), LinkIdx: -1}}})
+	}
+	doc := &render.Document{
+		URL:     "https://example.com/item?id=1",
+		Lines:   lines,
+		Anchors: map[string]int{"thread-2": 17},
+	}
+
+	b := &Browser{UI: &ui.UI{Screen: sim, Cfg: cfg}, currentURL: doc.URL}
+	b.UI.SetDocument(doc)
+	b.UI.RestoreViewport(3, 3, 0)
+
+	b.navigateWithOptions("#thread-2", defaultNavigateOptions())
+
+	if b.currentURL != "https://example.com/item?id=1#thread-2" {
+		t.Fatalf("unexpected current URL after anchor jump: %q", b.currentURL)
+	}
+	if b.UI.ScrollY != 17 || b.UI.CursorY != 17 {
+		t.Fatalf("expected anchor jump to line 17, got scroll=%d cursor=%d", b.UI.ScrollY, b.UI.CursorY)
+	}
+	if len(b.backStack) != 1 {
+		t.Fatalf("expected one history entry for anchor jump, got %d", len(b.backStack))
+	}
+	if b.backStack[0].URL != "https://example.com/item?id=1" {
+		t.Fatalf("unexpected back-stack URL: %q", b.backStack[0].URL)
+	}
+}
+
+func TestNavigateToSameDocumentAnchorWithoutTargetShowsStatus(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+
+	sim := tcell.NewSimulationScreen("UTF-8")
+	if err := sim.Init(); err != nil {
+		t.Fatalf("failed to init simulation screen: %v", err)
+	}
+	defer sim.Fini()
+	sim.SetSize(80, 24)
+
+	cfg := config.Default()
+	doc := &render.Document{URL: "https://example.com/item?id=1", Lines: []render.Line{{Spans: []render.Span{{Text: "x", LinkIdx: -1}}}}}
+	b := &Browser{UI: &ui.UI{Screen: sim, Cfg: cfg}, currentURL: doc.URL}
+	b.UI.SetDocument(doc)
+
+	b.navigateWithOptions("#missing", defaultNavigateOptions())
+
+	if !strings.Contains(b.UI.StatusMsg, "Anchor not found") {
+		t.Fatalf("expected missing-anchor status, got %q", b.UI.StatusMsg)
+	}
+	if b.currentURL != "https://example.com/item?id=1#missing" {
+		t.Fatalf("expected current URL to track missing anchor, got %q", b.currentURL)
+	}
+}
+
+func TestIsSVGContentType(t *testing.T) {
+	tests := []struct {
+		name string
+		ct   string
+		want bool
+	}{
+		{name: "svg mime", ct: "image/svg+xml", want: true},
+		{name: "svg mime with charset", ct: "image/svg+xml; charset=utf-8", want: true},
+		{name: "png", ct: "image/png", want: false},
+		{name: "html", ct: "text/html", want: false},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := isSVGContentType(tc.ct); got != tc.want {
+				t.Fatalf("isSVGContentType(%q) = %v, want %v", tc.ct, got, tc.want)
+			}
+		})
+	}
+}
+
+func TestIsSVGImageURL(t *testing.T) {
+	tests := []struct {
+		name string
+		raw  string
+		want bool
+	}{
+		{name: "svg extension", raw: "https://example.com/icon.svg", want: true},
+		{name: "svg extension with query", raw: "https://example.com/icon.svg?size=32", want: true},
+		{name: "svgz extension", raw: "https://example.com/icon.svgz#hash", want: true},
+		{name: "data uri svg", raw: "data:image/svg+xml;base64,PHN2Zz4=", want: true},
+		{name: "png extension", raw: "https://example.com/photo.png", want: false},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := isSVGImageURL(tc.raw); got != tc.want {
+				t.Fatalf("isSVGImageURL(%q) = %v, want %v", tc.raw, got, tc.want)
+			}
+		})
 	}
 }

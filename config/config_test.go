@@ -15,6 +15,9 @@ func TestDefault(t *testing.T) {
 	if cfg.ImageViewer != "viu %s" {
 		t.Errorf("expected default image viewer 'viu %%s', got %q", cfg.ImageViewer)
 	}
+	if cfg.SVGViewer != "timg %s" {
+		t.Errorf("expected default svg viewer 'timg %%s', got %q", cfg.SVGViewer)
+	}
 	if cfg.MailtoHandler != "open mailto:%s" {
 		t.Errorf("expected default mailto handler 'open mailto:%%s', got %q", cfg.MailtoHandler)
 	}
@@ -101,6 +104,9 @@ func TestAutoCreateConfig(t *testing.T) {
 	if cfg.ImageViewer != "viu %s" {
 		t.Errorf("expected default image viewer, got %q", cfg.ImageViewer)
 	}
+	if cfg.SVGViewer != "timg %s" {
+		t.Errorf("expected default svg viewer, got %q", cfg.SVGViewer)
+	}
 
 	// Config file should have been created.
 	configPath := filepath.Join(tmpDir, ".config", "wez", "config.toml")
@@ -116,6 +122,9 @@ func TestAutoCreateConfig(t *testing.T) {
 	}
 	if !strings.Contains(string(content), "show_recent_on_welcome") {
 		t.Error("expected auto-created config to include show_recent_on_welcome")
+	}
+	if !strings.Contains(string(content), "svg_viewer") {
+		t.Error("expected auto-created config to include svg_viewer")
 	}
 	if !strings.Contains(string(content), "show_link_underline") {
 		t.Error("expected auto-created config to include show_link_underline")
@@ -158,6 +167,9 @@ func TestLoadMissingFile(t *testing.T) {
 	if cfg.ImageViewer != "viu %s" {
 		t.Errorf("expected default image viewer, got %q", cfg.ImageViewer)
 	}
+	if cfg.SVGViewer != "timg %s" {
+		t.Errorf("expected default svg viewer, got %q", cfg.SVGViewer)
+	}
 }
 
 func TestLoadFromFile(t *testing.T) {
@@ -170,6 +182,7 @@ func TestLoadFromFile(t *testing.T) {
 
 	configContent := `
 image_viewer = "feh %s"
+svg_viewer = "rsvg-convert %s"
 download_dir = "~/Downloads"
 show_recent_on_welcome = false
 show_link_underline = true
@@ -200,6 +213,9 @@ loader = "orange"
 	}
 	if cfg.ImageViewer != "feh %s" {
 		t.Errorf("expected 'feh %%s', got %q", cfg.ImageViewer)
+	}
+	if cfg.SVGViewer != "rsvg-convert %s" {
+		t.Errorf("expected 'rsvg-convert %%s', got %q", cfg.SVGViewer)
 	}
 	if cfg.DownloadDir != filepath.Join(tmpDir, "Downloads") {
 		t.Errorf("expected expanded download_dir %q, got %q", filepath.Join(tmpDir, "Downloads"), cfg.DownloadDir)

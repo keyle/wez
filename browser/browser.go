@@ -35,6 +35,7 @@ var (
 
 const (
 	maxMetaRedirectHops = 8
+	maxPageBuffers      = 25
 	aboutWelcomeURL     = "about:welcome"
 	aboutHistoryURL     = "about:history"
 	aboutBookmarksURL   = "about:bookmarks"
@@ -47,20 +48,28 @@ type formSubmission struct {
 }
 
 type navState struct {
-	URL     string
-	ScrollY int
-	CursorY int
-	CursorX int
+	URL        string
+	ScrollY    int
+	CursorY    int
+	CursorX    int
+	SnapshotID int
+}
+
+type pageSnapshot struct {
+	Doc        *render.Document
+	SourceURL  string
+	SourceBody string
 }
 
 type navigateOptions struct {
-	pushCurrent  bool
-	clearForward bool
-	restore      *navState
+	pushCurrent           bool
+	clearForward          bool
+	restore               *navState
+	allowSameDocAnchorNav bool
 }
 
 func defaultNavigateOptions() navigateOptions {
-	return navigateOptions{pushCurrent: true, clearForward: true}
+	return navigateOptions{pushCurrent: true, clearForward: true, allowSameDocAnchorNav: true}
 }
 
 // Browser ties all components together.
@@ -85,6 +94,10 @@ type Browser struct {
 	viewScrollY int
 	viewCursorY int
 	viewCursorX int
+
+	snapshotByID map[int]pageSnapshot
+	snapshotIDs  []int
+	nextSnapshot int
 }
 
 // New creates a new Browser instance.
@@ -139,6 +152,9 @@ func (b *Browser) navigateWithOptions(rawURL string, opts navigateOptions) {
 	}
 	if isJavaScriptURL(rawURL) {
 		b.UI.SetStatus("Ignored javascript URL")
+		return
+	}
+	if opts.allowSameDocAnchorNav && b.navigateToSameDocumentAnchor(rawURL, opts) {
 		return
 	}
 
@@ -253,11 +269,147 @@ func (b *Browser) currentNavState() (navState, bool) {
 func (b *Browser) applyNavigationTransition(targetURL string, opts navigateOptions, prev navState, hasPrev bool) {
 	if opts.pushCurrent && hasPrev {
 		if strings.TrimSpace(targetURL) == "" || prev.URL != targetURL {
-			b.backStack = append(b.backStack, prev)
+			b.backStack = append(b.backStack, b.navStateWithSnapshot(prev))
 		}
 	}
 	if opts.clearForward {
 		b.forwardStack = nil
+	}
+}
+
+func (b *Browser) navigateToSameDocumentAnchor(rawURL string, opts navigateOptions) bool {
+	if b == nil || b.UI == nil || b.UI.Doc == nil {
+		return false
+	}
+
+	currentRaw := strings.TrimSpace(b.currentURL)
+	if currentRaw == "" {
+		currentRaw = strings.TrimSpace(b.UI.Doc.URL)
+	}
+	if currentRaw == "" {
+		return false
+	}
+
+	current, err := url.Parse(currentRaw)
+	if err != nil {
+		return false
+	}
+	target, err := url.Parse(strings.TrimSpace(rawURL))
+	if err != nil {
+		return false
+	}
+	if !target.IsAbs() {
+		target = current.ResolveReference(target)
+	}
+
+	if strings.TrimSpace(target.Fragment) == "" {
+		return false
+	}
+	if !sameDocumentBase(*current, *target) {
+		return false
+	}
+
+	prev, hasPrev := b.currentNavState()
+	b.leaveAuxView()
+	b.applyNavigationTransition(target.String(), opts, prev, hasPrev)
+	b.currentURL = target.String()
+
+	if opts.restore != nil {
+		b.UI.RestoreViewport(opts.restore.ScrollY, opts.restore.CursorY, opts.restore.CursorX)
+		b.UI.SetStatus("")
+		return true
+	}
+
+	line, ok := b.UI.Doc.AnchorLine(target.Fragment)
+	if !ok {
+		b.UI.SetStatus("Anchor not found: #" + target.Fragment)
+		return true
+	}
+	b.UI.RestoreViewport(line, line, 0)
+	b.UI.SetStatus("")
+	return true
+}
+
+func sameDocumentBase(current, target url.URL) bool {
+	current.Fragment = ""
+	target.Fragment = ""
+	return current.String() == target.String()
+}
+
+func (b *Browser) navStateWithSnapshot(state navState) navState {
+	state.SnapshotID = b.captureSnapshot()
+	return state
+}
+
+func (b *Browser) captureSnapshot() int {
+	if b == nil || b.UI == nil {
+		return 0
+	}
+
+	doc := b.UI.Doc
+	if b.viewActive {
+		doc = b.viewPrevDoc
+	}
+	if doc == nil {
+		return 0
+	}
+
+	if b.snapshotByID == nil {
+		b.snapshotByID = make(map[int]pageSnapshot)
+	}
+	b.nextSnapshot++
+	id := b.nextSnapshot
+	b.snapshotByID[id] = pageSnapshot{
+		Doc:        doc,
+		SourceURL:  b.sourceURL,
+		SourceBody: b.sourceBody,
+	}
+	b.snapshotIDs = append(b.snapshotIDs, id)
+	for len(b.snapshotIDs) > maxPageBuffers {
+		oldest := b.snapshotIDs[0]
+		b.snapshotIDs = b.snapshotIDs[1:]
+		delete(b.snapshotByID, oldest)
+	}
+	return id
+}
+
+func (b *Browser) restoreFromSnapshot(state navState) bool {
+	if state.SnapshotID == 0 || b == nil || b.UI == nil {
+		return false
+	}
+	snapshot, ok := b.snapshotByID[state.SnapshotID]
+	if !ok || snapshot.Doc == nil {
+		return false
+	}
+
+	b.refreshVisitedLinkStyles(snapshot.Doc)
+	b.leaveAuxView()
+	b.currentURL = state.URL
+	b.sourceURL = snapshot.SourceURL
+	b.sourceBody = snapshot.SourceBody
+	b.UI.SetDocument(snapshot.Doc)
+	b.UI.RestoreViewport(state.ScrollY, state.CursorY, state.CursorX)
+	b.UI.SetStatus("")
+	return true
+}
+
+func (b *Browser) refreshVisitedLinkStyles(doc *render.Document) {
+	if doc == nil || len(doc.Links) == 0 {
+		return
+	}
+
+	for lineIdx := range doc.Lines {
+		for spanIdx := range doc.Lines[lineIdx].Spans {
+			span := &doc.Lines[lineIdx].Spans[spanIdx]
+			if span.LinkIdx < 0 || span.LinkIdx >= len(doc.Links) {
+				continue
+			}
+
+			span.Style.Color = "link"
+			if b.isURLSeen(doc.Links[span.LinkIdx].URL) {
+				span.Style.Color = "visited_link"
+			}
+		}
 	}
 }
 
@@ -361,12 +513,14 @@ func (b *Browser) Run(initialURL string) {
 		case ui.ActionBack:
 			if len(b.backStack) > 0 {
 				if current, ok := b.currentNavState(); ok {
-					b.forwardStack = append(b.forwardStack, current)
+					b.forwardStack = append(b.forwardStack, b.navStateWithSnapshot(current))
 				}
 				prev := b.backStack[len(b.backStack)-1]
 				b.backStack = b.backStack[:len(b.backStack)-1]
-				opts := navigateOptions{pushCurrent: false, clearForward: false, restore: &prev}
-				b.navigateWithOptions(prev.URL, opts)
+				if !b.restoreFromSnapshot(prev) {
+					opts := navigateOptions{pushCurrent: false, clearForward: false, restore: &prev}
+					b.navigateWithOptions(prev.URL, opts)
+				}
 			} else {
 				b.UI.SetStatus("No previous page")
 			}
@@ -374,12 +528,14 @@ func (b *Browser) Run(initialURL string) {
 		case ui.ActionForward:
 			if len(b.forwardStack) > 0 {
 				if current, ok := b.currentNavState(); ok {
-					b.backStack = append(b.backStack, current)
+					b.backStack = append(b.backStack, b.navStateWithSnapshot(current))
 				}
 				next := b.forwardStack[len(b.forwardStack)-1]
 				b.forwardStack = b.forwardStack[:len(b.forwardStack)-1]
-				opts := navigateOptions{pushCurrent: false, clearForward: false, restore: &next}
-				b.navigateWithOptions(next.URL, opts)
+				if !b.restoreFromSnapshot(next) {
+					opts := navigateOptions{pushCurrent: false, clearForward: false, restore: &next}
+					b.navigateWithOptions(next.URL, opts)
+				}
 			} else {
 				b.UI.SetStatus("No next page")
 			}
@@ -643,6 +799,9 @@ func (b *Browser) clearCache() {
 	_ = b.History.Load()
 	b.Seen = history.NewSeen()
 	_ = b.Seen.Load()
+	b.snapshotByID = nil
+	b.snapshotIDs = nil
+	b.nextSnapshot = 0
 	b.sourceURL = ""
 	b.sourceBody = ""
 	b.Fetcher = b.newFetcher()
@@ -1238,6 +1397,44 @@ func isHTMLContentType(contentType string) bool {
 	return strings.Contains(ct, "text/html") || strings.Contains(ct, "application/xhtml")
 }
 
+func isSVGContentType(contentType string) bool {
+	ct := strings.ToLower(strings.TrimSpace(contentType))
+	if ct == "" {
+		return false
+	}
+
+	mediaType, _, err := mime.ParseMediaType(ct)
+	if err == nil {
+		ct = mediaType
+	}
+
+	return ct == "image/svg+xml" || strings.Contains(ct, "image/svg")
+}
+
+func isSVGImageURL(rawURL string) bool {
+	v := strings.ToLower(strings.TrimSpace(rawURL))
+	if v == "" {
+		return false
+	}
+
+	if strings.HasPrefix(v, "data:image/svg+xml") {
+		return true
+	}
+
+	if u, err := url.Parse(v); err == nil {
+		p := strings.ToLower(strings.TrimSpace(u.Path))
+		if strings.HasSuffix(p, ".svg") || strings.HasSuffix(p, ".svgz") {
+			return true
+		}
+	}
+
+	if cut := strings.IndexAny(v, "?#"); cut >= 0 {
+		v = v[:cut]
+	}
+
+	return strings.HasSuffix(v, ".svg") || strings.HasSuffix(v, ".svgz")
+}
+
 func extractMetaRefreshURL(body []byte, baseURL string) (string, bool) {
 	doc, err := html.Parse(bytes.NewReader(body))
 	if err != nil {
@@ -1470,6 +1667,8 @@ func defaultExtForContentType(contentType string) string {
 		return ".jpg"
 	case "image/gif":
 		return ".gif"
+	case "image/svg+xml":
+		return ".svg"
 	}
 
 	return ""
@@ -1528,18 +1727,20 @@ func (b *Browser) openImage(imgURL string) {
 		return
 	}
 
+	isSVG := isSVGContentType(result.ContentType) || isSVGImageURL(result.FinalURL) || isSVGImageURL(imgURL)
+
 	// Write to temp file with appropriate extension.
 	tmpFile := "/tmp/wez_image"
-	ct := result.ContentType
+	ct := strings.ToLower(strings.TrimSpace(result.ContentType))
 	switch {
+	case isSVG:
+		tmpFile += ".svg"
 	case strings.Contains(ct, "png"):
 		tmpFile += ".png"
 	case strings.Contains(ct, "gif"):
 		tmpFile += ".gif"
 	case strings.Contains(ct, "webp"):
 		tmpFile += ".webp"
-	case strings.Contains(ct, "svg"):
-		tmpFile += ".svg"
 	default:
 		tmpFile += ".jpg"
 	}
@@ -1550,7 +1751,15 @@ func (b *Browser) openImage(imgURL string) {
 	}
 
 	// Build viewer command.
-	parts := buildCommandArgs(b.Cfg.ImageViewer, tmpFile)
+	viewer := b.Cfg.ImageViewer
+	if isSVG {
+		viewer = b.Cfg.SVGViewer
+		if strings.TrimSpace(viewer) == "" {
+			viewer = b.Cfg.ImageViewer
+		}
+	}
+
+	parts := buildCommandArgs(viewer, tmpFile)
 	if len(parts) == 0 {
 		return
 	}

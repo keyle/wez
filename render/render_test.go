@@ -157,6 +157,33 @@ func TestRenderRelativeLinks(t *testing.T) {
 	}
 }
 
+func TestRenderFragmentLinkReplacesExistingFragment(t *testing.T) {
+	html := `<html><body><a href="#thread-2">Next</a></body></html>`
+	doc := Render([]byte(html), "https://news.ycombinator.com/item?id=1#thread-1", 80)
+
+	if len(doc.Links) != 1 {
+		t.Fatalf("expected 1 link, got %d", len(doc.Links))
+	}
+	if doc.Links[0].URL != "https://news.ycombinator.com/item?id=1#thread-2" {
+		t.Fatalf("unexpected fragment link URL: %q", doc.Links[0].URL)
+	}
+}
+
+func TestRenderCollectsAnchorsByIDAndName(t *testing.T) {
+	html := `<html><body><h2 id="section-two">Section Two</h2><a name="legacy-anchor"></a><p>Body</p></body></html>`
+	doc := Render([]byte(html), "https://example.com/doc", 80)
+
+	if _, ok := doc.AnchorLine("section-two"); !ok {
+		t.Fatal("expected id-based anchor to be available")
+	}
+	if _, ok := doc.AnchorLine("legacy-anchor"); !ok {
+		t.Fatal("expected name-based anchor to be available")
+	}
+	if _, ok := doc.AnchorLine("legacy%2Danchor"); !ok {
+		t.Fatal("expected URL-escaped anchor lookup to work")
+	}
+}
+
 func TestRenderNoscript(t *testing.T) {
 	html := `<html><body><noscript>JavaScript is required</noscript></body></html>`
 	doc := Render([]byte(html), "http://example.com", 80)
@@ -457,6 +484,26 @@ func TestRenderImageNoAlt(t *testing.T) {
 	text := docText(doc)
 	if !strings.Contains(text, "[IMG]") {
 		t.Errorf("expected '[IMG]' in output, got: %q", text)
+	}
+}
+
+func TestRenderSVGImage(t *testing.T) {
+	html := `<html><body><img src="icon.svg" alt="Logo"></body></html>`
+	doc := Render([]byte(html), "http://example.com", 80)
+
+	text := docText(doc)
+	if !strings.Contains(text, "[SVG: Logo]") {
+		t.Errorf("expected '[SVG: Logo]' in output, got: %q", text)
+	}
+}
+
+func TestRenderSVGImageNoAlt(t *testing.T) {
+	html := `<html><body><img src="https://cdn.example.com/icon.svg?size=32"></body></html>`
+	doc := Render([]byte(html), "http://example.com", 80)
+
+	text := docText(doc)
+	if !strings.Contains(text, "[SVG]") {
+		t.Errorf("expected '[SVG]' in output, got: %q", text)
 	}
 }
 
@@ -765,6 +812,31 @@ func TestNextPrevFocusableIncludesControls(t *testing.T) {
 	line, col, ok = doc.PrevFocusable(0, 1)
 	if !ok || line != 0 || col != 30 {
 		t.Fatalf("expected wrapped previous focus target at 0:30, got %d:%d ok=%v", line, col, ok)
+	}
+}
+
+func TestNextPrevFocusableIncludesImagePlaceholders(t *testing.T) {
+	doc := &Document{
+		Lines: []Line{{Spans: []Span{
+			{Text: "[IMG]", ImageURL: "https://example.com/photo.png"},
+			{Text: "  "},
+			{Text: "[SVG]", ImageURL: "https://example.com/icon.svg"},
+		}}},
+	}
+
+	line, col, ok := doc.NextFocusable(0, -1)
+	if !ok || line != 0 || col != 0 {
+		t.Fatalf("expected first image focus target at 0:0, got %d:%d ok=%v", line, col, ok)
+	}
+
+	line, col, ok = doc.NextFocusable(0, 0)
+	if !ok || line != 0 || col != 7 {
+		t.Fatalf("expected svg focus target at 0:7, got %d:%d ok=%v", line, col, ok)
+	}
+
+	line, col, ok = doc.PrevFocusable(0, 7)
+	if !ok || line != 0 || col != 0 {
+		t.Fatalf("expected previous focus target at 0:0, got %d:%d ok=%v", line, col, ok)
 	}
 }
 

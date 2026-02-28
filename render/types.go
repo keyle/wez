@@ -2,6 +2,7 @@ package render
 
 import (
 	"fmt"
+	"net/url"
 	"sort"
 	"strings"
 
@@ -21,7 +22,7 @@ type SpanStyle struct {
 type focusTarget struct {
 	line int
 	col  int
-	kind int // 0=link, 1=control
+	kind int // 0=link, 1=control, 2=image
 	idx  int
 }
 
@@ -96,8 +97,38 @@ type Document struct {
 	URL      string
 	Lines    []Line
 	Links    []Link
+	Anchors  map[string]int
 	Forms    []Form
 	Controls []Control
+}
+
+// AnchorLine returns the target line for a URL fragment (without '#').
+func (d *Document) AnchorLine(fragment string) (int, bool) {
+	if d == nil || len(d.Anchors) == 0 {
+		return 0, false
+	}
+
+	frag := strings.TrimSpace(fragment)
+	frag = strings.TrimPrefix(frag, "#")
+	if frag == "" {
+		return 0, false
+	}
+
+	keys := []string{frag}
+	if unescaped, err := url.PathUnescape(frag); err == nil && unescaped != "" && unescaped != frag {
+		keys = append(keys, unescaped)
+	}
+
+	for _, key := range keys {
+		if line, ok := d.Anchors[key]; ok {
+			return line, true
+		}
+		if line, ok := d.Anchors[strings.ToLower(key)]; ok {
+			return line, true
+		}
+	}
+
+	return 0, false
 }
 
 // LinkAt returns the link index and URL at the given document position.
@@ -214,20 +245,49 @@ func (d *Document) PrevFocusable(fromLine, fromCol int) (line, col int, ok bool)
 }
 
 func (d *Document) focusTargets() []focusTarget {
-	targets := make([]focusTarget, 0, len(d.Links)+len(d.Controls))
+	targets := make([]focusTarget, 0, len(d.Links)+len(d.Controls)+len(d.Lines))
+	type targetPos struct {
+		line int
+		col  int
+	}
+	seen := make(map[targetPos]bool, len(d.Links)+len(d.Controls))
+
+	addTarget := func(line, col, kind, idx int) {
+		if line < 0 || col < 0 {
+			return
+		}
+		p := targetPos{line: line, col: col}
+		if seen[p] {
+			return
+		}
+		seen[p] = true
+		targets = append(targets, focusTarget{line: line, col: col, kind: kind, idx: idx})
+	}
 
 	for i, link := range d.Links {
 		if link.Line < 0 || link.Line >= len(d.Lines) || link.Col < 0 {
 			continue
 		}
-		targets = append(targets, focusTarget{line: link.Line, col: link.Col, kind: 0, idx: i})
+		addTarget(link.Line, link.Col, 0, i)
 	}
 
 	for i, c := range d.Controls {
 		if !isFocusableControl(c) {
 			continue
 		}
-		targets = append(targets, focusTarget{line: c.Line, col: c.Col, kind: 1, idx: i})
+		addTarget(c.Line, c.Col, 1, i)
+	}
+
+	imageIdx := 0
+	for lineIdx, line := range d.Lines {
+		x := 0
+		for _, span := range line.Spans {
+			if span.ImageURL != "" {
+				addTarget(lineIdx, x, 2, imageIdx)
+				imageIdx++
+			}
+			x += runewidth.StringWidth(span.Text)
+		}
 	}
 
 	sort.Slice(targets, func(i, j int) bool {

@@ -16,6 +16,7 @@ const Version = "1.8"
 
 type Config struct {
 	ImageViewer           string      `toml:"image_viewer"`
+	SVGViewer             string      `toml:"svg_viewer"`
 	MailtoHandler         string      `toml:"mailto_handler"`
 	DownloadDir           string      `toml:"download_dir"`
 	ShowRecentOnWelcome   bool        `toml:"show_recent_on_welcome"`
@@ -49,6 +50,7 @@ type ColorConfig struct {
 func Default() Config {
 	return Config{
 		ImageViewer:           "viu %s",
+		SVGViewer:             "timg %s",
 		MailtoHandler:         "open mailto:%s",
 		DownloadDir:           defaultDownloadDir(),
 		ShowRecentOnWelcome:   true,
@@ -368,6 +370,9 @@ func defaultConfigTOML(cfg Config) string {
 
 # External image viewer command. %%s is replaced with the image file path.
 image_viewer = "viu %%s"
+
+# External SVG viewer command. %%s is replaced with the SVG file path.
+svg_viewer = "timg %%s"
 
 # Command to handle mailto: links. %%s is replaced with the email address.
 # macOS:  "open mailto:%%s"
