@@ -1,6 +1,7 @@
 package browser
 
 import (
+	"bytes"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -573,5 +574,23 @@ func TestIsSVGImageURL(t *testing.T) {
 				t.Fatalf("isSVGImageURL(%q) = %v, want %v", tc.raw, got, tc.want)
 			}
 		})
+	}
+}
+
+func TestWaitForReturnKeyStopsOnEsc(t *testing.T) {
+	r := bytes.NewBufferString("abc\x1bmore")
+	waitForReturnKey(r)
+
+	if got := r.String(); got != "more" {
+		t.Fatalf("expected remaining input %q after ESC, got %q", "more", got)
+	}
+}
+
+func TestWaitForReturnKeyStopsOnEnter(t *testing.T) {
+	r := bytes.NewBufferString("abc\nmore")
+	waitForReturnKey(r)
+
+	if got := r.String(); got != "more" {
+		t.Fatalf("expected remaining input %q after Enter, got %q", "more", got)
 	}
 }

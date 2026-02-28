@@ -5,7 +5,7 @@
 .nh
 .ad l
 .\" Begin generated content:
-.TH "WEZ" "1" "2026-02-26"
+.TH "WEZ" "1" "2026-02-28"
 .PP
 .SH NAME
 .PP
@@ -94,6 +94,8 @@ Optional helpers:
 .IP \(bu 4
 External image viewer command (default: `viu %s`)
 .IP \(bu 4
+External SVG viewer command (default: `timg %s`)
+.IP \(bu 4
 Clipboard helpers:
 .RS 4
 .IP \(bu 4
@@ -149,13 +151,15 @@ Default normal-mode bindings (subset):
 .IP \(bu 4
 `h` / `l` - move cursor left / right
 .IP \(bu 4
+`I` / `A` - jump to first non-space / last char on current line
+.IP \(bu 4
 `gg` / `G` - jump top / bottom
 .IP \(bu 4
 `Ctrl-F` / `PgUp` - page down / up
 .IP \(bu 4
 `d` / `u` - half-page down / up
 .IP \(bu 4
-`Tab` / `Shift-Tab` - next / previous focus target (link or form control)
+`Tab` / `Shift-Tab` - next / previous focus target (link, form control, or image)
 .IP \(bu 4
 `Enter` - activate link/control under cursor
 .IP \(bu 4
@@ -179,7 +183,9 @@ Default normal-mode bindings (subset):
 .IP \(bu 4
 `/` then `n` / `N` - search, next / previous match
 .IP \(bu 4
-`i` - open image under cursor (external viewer)
+`i` - open image/SVG under cursor (external viewer; Enter/Esc to return)
+.IP \(bu 4
+`Ctrl-I` - download image/SVG under cursor
 .IP \(bu 4
 `v` / `V` - visual / visual-line selection
 .IP \(bu 4

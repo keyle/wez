@@ -6,6 +6,7 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
+	"unicode"
 
 	"github.com/gdamore/tcell/v2"
 	"github.com/mattn/go-runewidth"
@@ -42,6 +43,7 @@ const (
 	ActionOpenWelcome
 	ActionReload
 	ActionOpenImage // open image under cursor
+	ActionDownloadImage
 	ActionSearch    // search for InputBuffer
 	ActionWebSearch // web search for InputBuffer
 	ActionSearchNext
@@ -608,6 +610,12 @@ func (u *UI) executeAction(actionName string) Action {
 		u.ScrollY = maxScroll
 		u.updateStatusLink()
 
+	case keymap.LineFirstNonSpace:
+		u.jumpToLineFirstNonSpace()
+
+	case keymap.LineEnd:
+		u.jumpToLineEnd()
+
 	case keymap.Back:
 		return ActionBack
 
@@ -672,6 +680,9 @@ func (u *UI) executeAction(actionName string) Action {
 
 	case keymap.OpenImage:
 		return ActionOpenImage
+
+	case keymap.DownloadImage:
+		return ActionDownloadImage
 
 	case keymap.YankURL:
 		return ActionYankURL
@@ -866,6 +877,61 @@ func (u *UI) jumpToPrevLink() {
 		u.ensureCursorVisible()
 		u.updateStatusLink()
 	}
+}
+
+func (u *UI) jumpToLineFirstNonSpace() {
+	if u.Doc == nil || u.CursorY < 0 || u.CursorY >= len(u.Doc.Lines) {
+		return
+	}
+
+	line := u.Doc.Lines[u.CursorY]
+	x := 0
+	for _, span := range line.Spans {
+		for _, r := range span.Text {
+			rw := runewidth.RuneWidth(r)
+			if rw < 1 {
+				rw = 1
+			}
+			if !unicode.IsSpace(r) {
+				u.CursorX = x
+				u.updateStatusLink()
+				return
+			}
+			x += rw
+		}
+	}
+
+	u.CursorX = 0
+	u.updateStatusLink()
+}
+
+func (u *UI) jumpToLineEnd() {
+	if u.Doc == nil || u.CursorY < 0 || u.CursorY >= len(u.Doc.Lines) {
+		return
+	}
+
+	line := u.Doc.Lines[u.CursorY]
+	x := 0
+	last := 0
+	hasRune := false
+	for _, span := range line.Spans {
+		for _, r := range span.Text {
+			rw := runewidth.RuneWidth(r)
+			if rw < 1 {
+				rw = 1
+			}
+			last = x
+			hasRune = true
+			x += rw
+		}
+	}
+
+	if hasRune {
+		u.CursorX = last
+	} else {
+		u.CursorX = 0
+	}
+	u.updateStatusLink()
 }
 
 func (u *UI) ensureCursorVisible() {

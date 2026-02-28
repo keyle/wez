@@ -15,9 +15,9 @@ func TestDefaultBindings(t *testing.T) {
 	required := []string{
 		Quit, ScrollDown, ScrollUp, CursorLeft, CursorRight,
 		PageDown, PageUp, HalfPageDown, HalfPageUp,
-		GoTop, GoBottom, Back, Forward, OpenWelcome,
+		GoTop, GoBottom, LineFirstNonSpace, LineEnd, Back, Forward, OpenWelcome,
 		OpenURL, OpenURLEdit, FollowLink, NextLink, PrevLink,
-		Search, SearchWeb, SearchNext, SearchPrev, Reload, OpenImage, YankURL, YankLinkURL, ShowSource,
+		Search, SearchWeb, SearchNext, SearchPrev, Reload, OpenImage, DownloadImage, YankURL, YankLinkURL, ShowSource,
 		VisualMode, VisualLine, OpenHistory, OpenFavorites, AddFavorite, RemoveFavorite, ClearCache, ClearHistory,
 	}
 
@@ -124,6 +124,18 @@ func TestNewDefaultKeymap(t *testing.T) {
 	if action != Forward {
 		t.Errorf("expected 'F' -> forward, got %q", action)
 	}
+
+	// I -> line_first_non_space.
+	action, _ = km.Resolve("", "I")
+	if action != LineFirstNonSpace {
+		t.Errorf("expected 'I' -> line_first_non_space, got %q", action)
+	}
+
+	// A -> line_end.
+	action, _ = km.Resolve("", "A")
+	if action != LineEnd {
+		t.Errorf("expected 'A' -> line_end, got %q", action)
+	}
 }
 
 func TestSequenceGG(t *testing.T) {
@@ -211,6 +223,24 @@ func TestSpecialKeyBindings(t *testing.T) {
 	action, _ = km.Resolve("", "R")
 	if action != Reload {
 		t.Errorf("expected R -> reload, got %q", action)
+	}
+
+	// I -> line_first_non_space.
+	action, _ = km.Resolve("", "I")
+	if action != LineFirstNonSpace {
+		t.Errorf("expected I -> line_first_non_space, got %q", action)
+	}
+
+	// A -> line_end.
+	action, _ = km.Resolve("", "A")
+	if action != LineEnd {
+		t.Errorf("expected A -> line_end, got %q", action)
+	}
+
+	// Ctrl-I -> download_image.
+	action, _ = km.Resolve("", "Ctrl-I")
+	if action != DownloadImage {
+		t.Errorf("expected Ctrl-I -> download_image, got %q", action)
 	}
 
 	// Y -> yank_link_url.
@@ -389,33 +419,35 @@ func TestEventToKeyString(t *testing.T) {
 		name     string
 		key      tcell.Key
 		rune     rune
+		mod      tcell.ModMask
 		expected string
 	}{
-		{"rune q", tcell.KeyRune, 'q', "q"},
-		{"rune G", tcell.KeyRune, 'G', "G"},
-		{"rune /", tcell.KeyRune, '/', "/"},
-		{"space", tcell.KeyRune, ' ', "Space"},
-		{"enter", tcell.KeyEnter, 0, "Enter"},
-		{"tab", tcell.KeyTab, 0, "Tab"},
-		{"backtab", tcell.KeyBacktab, 0, "Shift-Tab"},
-		{"backspace", tcell.KeyBackspace2, 0, "Backspace"},
-		{"escape", tcell.KeyEscape, 0, "Escape"},
-		{"up", tcell.KeyUp, 0, "Up"},
-		{"down", tcell.KeyDown, 0, "Down"},
-		{"left", tcell.KeyLeft, 0, "Left"},
-		{"right", tcell.KeyRight, 0, "Right"},
-		{"pgup", tcell.KeyPgUp, 0, "PgUp"},
-		{"pgdn", tcell.KeyPgDn, 0, "PgDn"},
-		{"ctrl-f", tcell.KeyCtrlF, 0, "Ctrl-F"},
-		{"ctrl-o", tcell.KeyCtrlO, 0, "Ctrl-O"},
-		{"ctrl-b", tcell.KeyCtrlB, 0, "Ctrl-B"},
-		{"ctrl-d", tcell.KeyCtrlD, 0, "Ctrl-D"},
-		{"ctrl-u", tcell.KeyCtrlU, 0, "Ctrl-U"},
+		{"rune q", tcell.KeyRune, 'q', tcell.ModNone, "q"},
+		{"rune G", tcell.KeyRune, 'G', tcell.ModNone, "G"},
+		{"rune /", tcell.KeyRune, '/', tcell.ModNone, "/"},
+		{"space", tcell.KeyRune, ' ', tcell.ModNone, "Space"},
+		{"enter", tcell.KeyEnter, 0, tcell.ModNone, "Enter"},
+		{"tab", tcell.KeyTab, 0, tcell.ModNone, "Tab"},
+		{"ctrl-tab maps ctrl-i", tcell.KeyTab, 0, tcell.ModCtrl, "Ctrl-I"},
+		{"backtab", tcell.KeyBacktab, 0, tcell.ModNone, "Shift-Tab"},
+		{"backspace", tcell.KeyBackspace2, 0, tcell.ModNone, "Backspace"},
+		{"escape", tcell.KeyEscape, 0, tcell.ModNone, "Escape"},
+		{"up", tcell.KeyUp, 0, tcell.ModNone, "Up"},
+		{"down", tcell.KeyDown, 0, tcell.ModNone, "Down"},
+		{"left", tcell.KeyLeft, 0, tcell.ModNone, "Left"},
+		{"right", tcell.KeyRight, 0, tcell.ModNone, "Right"},
+		{"pgup", tcell.KeyPgUp, 0, tcell.ModNone, "PgUp"},
+		{"pgdn", tcell.KeyPgDn, 0, tcell.ModNone, "PgDn"},
+		{"ctrl-f", tcell.KeyCtrlF, 0, tcell.ModNone, "Ctrl-F"},
+		{"ctrl-o", tcell.KeyCtrlO, 0, tcell.ModNone, "Ctrl-O"},
+		{"ctrl-b", tcell.KeyCtrlB, 0, tcell.ModNone, "Ctrl-B"},
+		{"ctrl-d", tcell.KeyCtrlD, 0, tcell.ModNone, "Ctrl-D"},
+		{"ctrl-u", tcell.KeyCtrlU, 0, tcell.ModNone, "Ctrl-U"},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			ev := tcell.NewEventKey(tt.key, tt.rune, tcell.ModNone)
+			ev := tcell.NewEventKey(tt.key, tt.rune, tt.mod)
 			got := EventToKeyString(ev)
 			if got != tt.expected {
 				t.Errorf("EventToKeyString() = %q, want %q", got, tt.expected)

@@ -11,43 +11,46 @@ import (
 
 // Action name constants used throughout the application.
 const (
-	Quit           = "quit"
-	ScrollDown     = "scroll_down"
-	ScrollUp       = "scroll_up"
-	CursorLeft     = "cursor_left"
-	CursorRight    = "cursor_right"
-	PageDown       = "page_down"
-	PageUp         = "page_up"
-	HalfPageDown   = "half_page_down"
-	HalfPageUp     = "half_page_up"
-	GoTop          = "go_top"
-	GoBottom       = "go_bottom"
-	Back           = "back"
-	Forward        = "forward"
-	OpenWelcome    = "open_welcome"
-	OpenURL        = "open_url"
-	OpenURLEdit    = "open_url_edit"
-	FollowLink     = "follow_link"
-	NextLink       = "next_link"
-	PrevLink       = "prev_link"
-	Search         = "search"
-	SearchWeb      = "search_web"
-	SearchNext     = "search_next"
-	SearchPrev     = "search_prev"
-	Reload         = "reload"
-	OpenImage      = "open_image"
-	YankURL        = "yank_url"
-	YankLinkURL    = "yank_link_url"
-	VisualMode     = "visual_mode"
-	VisualLine     = "visual_line_mode"
-	OpenHistory    = "open_history_view"
-	OpenFavorites  = "open_favorites_view"
-	AddFavorite    = "add_favorite"
-	RemoveFavorite = "remove_favorite"
-	ShowSource     = "show_source"
-	ClearCache     = "clear_cache"
-	ClearHistory   = "clear_history"
-	OpenMailto     = "open_mailto"
+	Quit              = "quit"
+	ScrollDown        = "scroll_down"
+	ScrollUp          = "scroll_up"
+	CursorLeft        = "cursor_left"
+	CursorRight       = "cursor_right"
+	PageDown          = "page_down"
+	PageUp            = "page_up"
+	HalfPageDown      = "half_page_down"
+	HalfPageUp        = "half_page_up"
+	GoTop             = "go_top"
+	GoBottom          = "go_bottom"
+	LineFirstNonSpace = "line_first_non_space"
+	LineEnd           = "line_end"
+	Back              = "back"
+	Forward           = "forward"
+	OpenWelcome       = "open_welcome"
+	OpenURL           = "open_url"
+	OpenURLEdit       = "open_url_edit"
+	FollowLink        = "follow_link"
+	NextLink          = "next_link"
+	PrevLink          = "prev_link"
+	Search            = "search"
+	SearchWeb         = "search_web"
+	SearchNext        = "search_next"
+	SearchPrev        = "search_prev"
+	Reload            = "reload"
+	OpenImage         = "open_image"
+	DownloadImage     = "download_image"
+	YankURL           = "yank_url"
+	YankLinkURL       = "yank_link_url"
+	VisualMode        = "visual_mode"
+	VisualLine        = "visual_line_mode"
+	OpenHistory       = "open_history_view"
+	OpenFavorites     = "open_favorites_view"
+	AddFavorite       = "add_favorite"
+	RemoveFavorite    = "remove_favorite"
+	ShowSource        = "show_source"
+	ClearCache        = "clear_cache"
+	ClearHistory      = "clear_history"
+	OpenMailto        = "open_mailto"
 )
 
 // Keymap maps key presses to action names, supporting single keys and
@@ -62,42 +65,45 @@ type Keymap struct {
 // DefaultBindings returns the built-in key bindings.
 func DefaultBindings() map[string][]string {
 	return map[string][]string{
-		Quit:           {"q"},
-		ScrollDown:     {"j", "Down"},
-		ScrollUp:       {"k", "Up"},
-		CursorLeft:     {"h", "Left"},
-		CursorRight:    {"l", "Right"},
-		PageDown:       {"Ctrl-F", "PgDn", "Space"},
-		PageUp:         {"PgUp"},
-		HalfPageDown:   {"d"},
-		HalfPageUp:     {"u"},
-		GoTop:          {"gg"},
-		GoBottom:       {"G"},
-		Back:           {"b", "B", "Backspace"},
-		OpenHistory:    {"Ctrl-H"},
-		OpenFavorites:  {"Ctrl-B"},
-		OpenWelcome:    {"Ctrl-W"},
-		ShowSource:     {"Ctrl-U"},
-		Forward:        {"f", "F"},
-		OpenURL:        {"o"},
-		OpenURLEdit:    {"O"},
-		FollowLink:     {"Enter"},
-		NextLink:       {"Tab"},
-		PrevLink:       {"Shift-Tab"},
-		Search:         {"/"},
-		SearchWeb:      {"Ctrl-O"},
-		SearchNext:     {"n"},
-		SearchPrev:     {"N"},
-		Reload:         {"r", "R"},
-		OpenImage:      {"i"},
-		YankURL:        {"y"},
-		YankLinkURL:    {"Y"},
-		VisualMode:     {"v"},
-		VisualLine:     {"V"},
-		AddFavorite:    {"za"},
-		RemoveFavorite: {"zd"},
-		ClearCache:     {"zc"},
-		ClearHistory:   {"zh"},
+		Quit:              {"q"},
+		ScrollDown:        {"j", "Down"},
+		ScrollUp:          {"k", "Up"},
+		CursorLeft:        {"h", "Left"},
+		CursorRight:       {"l", "Right"},
+		PageDown:          {"Ctrl-F", "PgDn", "Space"},
+		PageUp:            {"PgUp"},
+		HalfPageDown:      {"d"},
+		HalfPageUp:        {"u"},
+		GoTop:             {"gg"},
+		GoBottom:          {"G"},
+		LineFirstNonSpace: {"I"},
+		LineEnd:           {"A"},
+		Back:              {"b", "B", "Backspace"},
+		OpenHistory:       {"Ctrl-H"},
+		OpenFavorites:     {"Ctrl-B"},
+		OpenWelcome:       {"Ctrl-W"},
+		ShowSource:        {"Ctrl-U"},
+		Forward:           {"f", "F"},
+		OpenURL:           {"o"},
+		OpenURLEdit:       {"O"},
+		FollowLink:        {"Enter"},
+		NextLink:          {"Tab"},
+		PrevLink:          {"Shift-Tab"},
+		Search:            {"/"},
+		SearchWeb:         {"Ctrl-O"},
+		SearchNext:        {"n"},
+		SearchPrev:        {"N"},
+		Reload:            {"r", "R"},
+		OpenImage:         {"i"},
+		DownloadImage:     {"Ctrl-I"},
+		YankURL:           {"y"},
+		YankLinkURL:       {"Y"},
+		VisualMode:        {"v"},
+		VisualLine:        {"V"},
+		AddFavorite:       {"za"},
+		RemoveFavorite:    {"zd"},
+		ClearCache:        {"zc"},
+		ClearHistory:      {"zh"},
 	}
 }
 
@@ -179,6 +185,9 @@ func EventToKeyString(ev *tcell.EventKey) string {
 	case tcell.KeyEnter:
 		return "Enter"
 	case tcell.KeyTab:
+		if ev.Modifiers()&tcell.ModCtrl != 0 {
+			return "Ctrl-I"
+		}
 		return "Tab"
 	case tcell.KeyBacktab:
 		return "Shift-Tab"
@@ -313,6 +322,8 @@ half_page_down = ["d"]
 half_page_up   = ["u"]
 go_top         = ["gg"]
 go_bottom      = ["G"]
+line_first_non_space = ["I"]
+line_end       = ["A"]
 back           = ["b", "B", "Backspace"]
 open_history_view = ["Ctrl-H"]
 open_favorites_view = ["Ctrl-B"]
@@ -330,6 +341,7 @@ search_next    = ["n"]
 search_prev    = ["N"]
 reload         = ["r", "R"]
 open_image     = ["i"]
+download_image = ["Ctrl-I"]
 yank_url       = ["y"]
 yank_link_url  = ["Y"]
 visual_mode    = ["v"]

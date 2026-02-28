@@ -68,6 +68,7 @@ Required:
 Optional helpers:
 
 - External image viewer command (default: `viu %s`)
+- External SVG viewer command (default: `timg %s`)
 - Clipboard helpers:
 	- macOS: `pbcopy`
 	- Linux: `wl-copy`, `xclip`, or `xsel`
@@ -102,10 +103,11 @@ Default normal-mode bindings (subset):
 - `Ctrl-O` - open web-search prompt
 - `j` / `k` - scroll down / up
 - `h` / `l` - move cursor left / right
+- `I` / `A` - jump to first non-space / last char on current line
 - `gg` / `G` - jump top / bottom
 - `Ctrl-F` / `PgUp` - page down / up
 - `d` / `u` - half-page down / up
-- `Tab` / `Shift-Tab` - next / previous focus target (link or form control)
+- `Tab` / `Shift-Tab` - next / previous focus target (link, form control, or image)
 - `Enter` - activate link/control under cursor
 - `b` / `B` / `Backspace` - back
 - `Ctrl-W` - open welcome page
@@ -117,7 +119,8 @@ Default normal-mode bindings (subset):
 - `za` / `zd` - add / remove favorite
 - `zc` / `zh` - clear cache / clear history
 - `/` then `n` / `N` - search, next / previous match
-- `i` - open image under cursor (external viewer)
+- `i` - open image/SVG under cursor (external viewer; Enter/Esc to return)
+- `Ctrl-I` - download image/SVG under cursor
 - `v` / `V` - visual / visual-line selection
 - `y` - yank selection (or current line)
 - `Y` - yank link URL under cursor

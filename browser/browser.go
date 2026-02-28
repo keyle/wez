@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"fmt"
+	"io"
 	"mime"
 	"net/url"
 	"os"
@@ -17,6 +18,7 @@ import (
 
 	"golang.org/x/net/html"
 	"golang.org/x/net/html/atom"
+	"golang.org/x/term"
 
 	"wez/config"
 	"wez/favorites"
@@ -554,6 +556,16 @@ func (b *Browser) Run(initialURL string) {
 				imgURL, ok := b.UI.Doc.ImageAt(b.UI.CursorY, b.UI.CursorX)
 				if ok {
 					b.openImage(imgURL)
+				} else {
+					b.UI.SetStatus("No image under cursor")
+				}
+			}
+
+		case ui.ActionDownloadImage:
+			if b.UI.Doc != nil {
+				imgURL, ok := b.UI.Doc.ImageAt(b.UI.CursorY, b.UI.CursorX)
+				if ok {
+					b.downloadImage(imgURL)
 				} else {
 					b.UI.SetStatus("No image under cursor")
 				}
@@ -1784,11 +1796,59 @@ func (b *Browser) openImage(imgURL string) {
 	}
 
 	// Pause so the user can see the image before tcell takes over again.
-	fmt.Print("\r\nPress Enter to return to wez...")
-	reader := bufio.NewReader(os.Stdin)
-	_, _ = reader.ReadBytes('\n')
+	promptViewerReturn()
 
 	b.UI.SetStatus("")
+}
+
+func (b *Browser) downloadImage(imgURL string) {
+	result, err := b.fetchWithStatusAnimation(imgURL, "Downloading image")
+	if err != nil {
+		b.UI.SetStatus("Error downloading image: " + err.Error())
+		return
+	}
+
+	savedPath, saveErr := b.saveDownload(result)
+	if saveErr != nil {
+		b.UI.SetStatus("Download error: " + saveErr.Error())
+		return
+	}
+
+	b.UI.SetStatusAlert("Downloaded to " + savedPath)
+}
+
+func promptViewerReturn() {
+	fmt.Print("\r\nPress Enter or Esc to return to wez...")
+
+	fd := int(os.Stdin.Fd())
+	if term.IsTerminal(fd) {
+		state, err := term.MakeRaw(fd)
+		if err == nil {
+			defer func() { _ = term.Restore(fd, state) }()
+			waitForReturnKey(os.Stdin)
+			return
+		}
+	}
+
+	reader := bufio.NewReader(os.Stdin)
+	_, _ = reader.ReadBytes('\n')
+}
+
+func waitForReturnKey(r io.Reader) {
+	reader, ok := r.(io.ByteReader)
+	if !ok {
+		reader = bufio.NewReader(r)
+	}
+	for {
+		b, err := reader.ReadByte()
+		if err != nil {
+			return
+		}
+		switch b {
+		case '\r', '\n', 27:
+			return
+		}
+	}
 }
 
 func buildCommandArgs(template, arg string) []string {
@@ -1817,12 +1877,13 @@ func (b *Browser) ShowWelcome() {
 		{Spans: []render.Span{{Text: "  o / O       Open action bar (URL input; O pre-fills)", LinkIdx: -1}}},
 		{Spans: []render.Span{{Text: "  j / k       Scroll down / up", LinkIdx: -1}}},
 		{Spans: []render.Span{{Text: "  h / l       Move cursor left / right", LinkIdx: -1}}},
+		{Spans: []render.Span{{Text: "  I / A       Jump to first non-space / last char on line", LinkIdx: -1}}},
 		{Spans: []render.Span{{Text: "  gg / G      Go to top / bottom", LinkIdx: -1}}},
 		{Spans: []render.Span{{Text: "  Ctrl-F      Page down", LinkIdx: -1}}},
 		{Spans: []render.Span{{Text: "  PgUp        Page up", LinkIdx: -1}}},
 		{Spans: []render.Span{{Text: "  d / u       Half page down / up", LinkIdx: -1}}},
 		{Spans: []render.Span{{Text: "  Space       Page down", LinkIdx: -1}}},
-		{Spans: []render.Span{{Text: "  Tab / S-Tab Jump to next / previous link/control", LinkIdx: -1}}},
+		{Spans: []render.Span{{Text: "  Tab / S-Tab Jump to next / previous link/control/image", LinkIdx: -1}}},
 		{Spans: []render.Span{{Text: "  Enter       Activate link/form control under cursor", LinkIdx: -1}}},
 		{Spans: []render.Span{{Text: "              (edit fields, toggle checks, submit buttons)", LinkIdx: -1}}},
 		{Spans: []render.Span{{Text: "  b / B       Go back", LinkIdx: -1}}},
@@ -1837,7 +1898,8 @@ func (b *Browser) ShowWelcome() {
 		{Spans: []render.Span{{Text: "  /           Search in page", LinkIdx: -1}}},
 		{Spans: []render.Span{{Text: "  Ctrl-o      Search web", LinkIdx: -1}}},
 		{Spans: []render.Span{{Text: "  n / N       Next / previous search match", LinkIdx: -1}}},
-		{Spans: []render.Span{{Text: "  i           Open image under cursor", LinkIdx: -1}}},
+		{Spans: []render.Span{{Text: "  i           Open image/SVG under cursor", LinkIdx: -1}}},
+		{Spans: []render.Span{{Text: "  Ctrl-I      Download image/SVG under cursor", LinkIdx: -1}}},
 		{Spans: []render.Span{{Text: "  v / V       Enter visual / visual-line mode", LinkIdx: -1}}},
 		{Spans: []render.Span{{Text: "  y / Y       Yank text / link URL under cursor", LinkIdx: -1}}},
 		{Spans: []render.Span{{Text: "  Mouse       Click to move, drag to select", LinkIdx: -1}}},

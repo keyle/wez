@@ -91,6 +91,7 @@
 <p class="Pp"></p>
 <ul class="Bl-bullet">
   <li>External image viewer command (default: `viu %s`)</li>
+  <li>External SVG viewer command (default: `timg %s`)</li>
   <li>Clipboard helpers:</li>
 </ul>
 <div class="Bd-indent">
@@ -128,11 +129,12 @@
   <li>`Ctrl-O` - open web-search prompt</li>
   <li>`j` / `k` - scroll down / up</li>
   <li>`h` / `l` - move cursor left / right</li>
+  <li>`I` / `A` - jump to first non-space / last char on current line</li>
   <li>`gg` / `G` - jump top / bottom</li>
   <li>`Ctrl-F` / `PgUp` - page down / up</li>
   <li>`d` / `u` - half-page down / up</li>
-  <li>`Tab` / `Shift-Tab` - next / previous focus target (link or form
-    control)</li>
+  <li>`Tab` / `Shift-Tab` - next / previous focus target (link, form control, or
+      image)</li>
   <li>`Enter` - activate link/control under cursor</li>
   <li>`b` / `B` / `Backspace` - back</li>
   <li>`Ctrl-W` - open welcome page</li>
@@ -144,7 +146,9 @@
   <li>`za` / `zd` - add / remove favorite</li>
   <li>`zc` / `zh` - clear cache / clear history</li>
   <li>`/` then `n` / `N` - search, next / previous match</li>
-  <li>`i` - open image under cursor (external viewer)</li>
+  <li>`i` - open image/SVG under cursor (external viewer; Enter/Esc to
+    return)</li>
+  <li>`Ctrl-I` - download image/SVG under cursor</li>
   <li>`v` / `V` - visual / visual-line selection</li>
   <li>`y` - yank selection (or current line)</li>
   <li>`Y` - yank link URL under cursor</li>
@@ -207,7 +211,7 @@ Persisted cookie jar (enabled by default).
 </div>
 <table class="foot">
   <tr>
-    <td class="foot-date">2026-02-26</td>
+    <td class="foot-date">2026-02-28</td>
     <td class="foot-os"></td>
   </tr>
 </table>
