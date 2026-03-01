@@ -49,12 +49,6 @@ these files are auto created on first start.
 
 the config and keymap files are self-documentating, if not, let me know.
 
-## Method
-
-Much of this repo was built using agentic coding, with `Opencode`. First pass with `Opus 4.6` on `high`, then `Codex 5.3` on `high/xhigh`. 
-
-I could hand-write it all but it does it much faster than me and never gets tired. I _do_ read and take ownership of the code. If you see slop, it's my fault!
-
 ## License
 
 Apache-2.0.
