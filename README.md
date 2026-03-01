@@ -27,16 +27,16 @@ It aims to be fast and readable in a text UI, with practical browsing features a
 ## Build
 
 ```bash
-make all
-make install
+    make all
+    make install
 ```
 
 ## Usage
 
 ```bash
-wez
-wez news.ycombinator.com
-wez --dump https://example.com
+    wez
+    wez news.ycombinator.com
+    wez --dump https://example.com
 ```
 
 ## Config
