@@ -2054,6 +2054,8 @@ func (b *Browser) ShowWelcome() {
 	lines := []render.Line{
 		{Spans: []render.Span{{Text: "  wez " + config.Version, Style: render.SpanStyle{Bold: true, Color: "heading"}, LinkIdx: -1}}},
 		{},
+		{Spans: []render.Span{{Text: "  (Tab for recents)", Style: render.SpanStyle{Bold: false}, LinkIdx: -1}}},
+		{},
 		{Spans: []render.Span{{Text: "Keybindings:", Style: render.SpanStyle{Bold: true}, LinkIdx: -1}}},
 		{},
 		{Spans: []render.Span{{Text: "  o / O       Open action bar (URL input; O pre-fills)", LinkIdx: -1}}},
