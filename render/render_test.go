@@ -145,6 +145,19 @@ func TestRenderVisitedLinksStyled(t *testing.T) {
 	}
 }
 
+func TestAdjacentLinksGetWordBoundarySpace(t *testing.T) {
+	html := `<html><body><p><a href="/hn">Hacker News</a><a href="/new">new</a></p></body></html>`
+	doc := Render([]byte(html), "https://news.ycombinator.com", 120)
+
+	text := docText(doc)
+	if strings.Contains(text, "Hacker Newsnew") {
+		t.Fatalf("expected space between adjacent link words, got: %q", text)
+	}
+	if !strings.Contains(text, "Hacker News new") {
+		t.Fatalf("expected adjacent links to include a single boundary space, got: %q", text)
+	}
+}
+
 func TestRenderRelativeLinks(t *testing.T) {
 	html := `<html><body><a href="/about">About</a></body></html>`
 	doc := Render([]byte(html), "http://example.com/page", 80)
@@ -330,6 +343,50 @@ func TestHNCommentIndentAppliesToWrappedBodyAndReply(t *testing.T) {
 	}
 }
 
+func TestHNVotePlaceholderNoLeadingSpaceAtIndentZero(t *testing.T) {
+	html := `<html><body><table><tr><td class="ind" indent="0"><img src="s.gif" height="1" width="0"></td><td class="votelinks"><a href="/vote?id=1"><div class="votearrow"></div></a></td><td class="default"><a href="/user?id=alice">alice</a></td></tr></table></body></html>`
+	doc := Render([]byte(html), "https://news.ycombinator.com/item?id=1", 120)
+
+	found := false
+	for _, line := range doc.Lines {
+		lt := lineToText(line)
+		if strings.Contains(lt, "[a]") && strings.Contains(lt, "alice") {
+			found = true
+			if strings.HasPrefix(lt, " ") {
+				t.Fatalf("expected vote placeholder to start at column 0, got: %q", lt)
+			}
+			if !strings.HasPrefix(lt, "[a] alice") {
+				t.Fatalf("expected vote placeholder and author to align without leading padding, got: %q", lt)
+			}
+		}
+	}
+	if !found {
+		t.Fatalf("expected line containing vote placeholder and author, got: %q", docText(doc))
+	}
+}
+
+func TestIndentedParagraphDoesNotAddExtraLeadingSpace(t *testing.T) {
+	html := `<html><body><table><tr><td class="ind" indent="1"><img src="s.gif" height="1" width="40"></td><td class="default"><div class="comment"><p>
+  hello world
+</p></div></td></tr></table></body></html>`
+	doc := Render([]byte(html), "https://news.ycombinator.com/item?id=1", 80)
+
+	for _, line := range doc.Lines {
+		lt := lineToText(line)
+		if strings.Contains(lt, "hello world") {
+			if strings.HasPrefix(lt, "     hello world") {
+				t.Fatalf("expected no extra leading content space beyond indent, got: %q", lt)
+			}
+			if !strings.HasPrefix(lt, "    hello world") {
+				t.Fatalf("expected text to align to indent, got: %q", lt)
+			}
+			return
+		}
+	}
+
+	t.Fatalf("expected indented paragraph text, got: %q", docText(doc))
+}
+
 func TestTableLinkDoesNotStartWithSpace(t *testing.T) {
 	html := `<html><body><table><tr><td>1.</td><td> <a href="/user">alice</a></td><td> <a href="/item">42 comments</a></td></tr></table></body></html>`
 	doc := Render([]byte(html), "https://news.ycombinator.com", 120)
@@ -454,6 +511,30 @@ func TestWrappedLinkIndentIsNotLinkStyled(t *testing.T) {
 				t.Fatalf("expected indentation spaces outside link styling, got link span: %q", span.Text)
 			}
 		}
+	}
+}
+
+func TestWrappedLinkInOrderedListDoesNotAddExtraLeadingSpace(t *testing.T) {
+	html := `<html><body><ol><li>54 <a href="/s">
+  Package Managers a la Carte dependency resolution details
+</a></li></ol></body></html>`
+	doc := Render([]byte(html), "https://example.com", 28)
+
+	var checked bool
+	for _, line := range doc.Lines {
+		lt := lineToText(line)
+		if strings.Contains(lt, "dependency") || strings.Contains(lt, "resolution") || strings.Contains(lt, "details") {
+			checked = true
+			if strings.HasPrefix(lt, "     ") {
+				t.Fatalf("expected wrapped link line to align to list indent without extra leading space, got %q", lt)
+			}
+			if !strings.HasPrefix(lt, "    ") {
+				t.Fatalf("expected wrapped link line to keep list indentation, got %q", lt)
+			}
+		}
+	}
+	if !checked {
+		t.Fatalf("expected wrapped link continuation lines, got: %q", docText(doc))
 	}
 }
 

@@ -6,6 +6,7 @@ import (
 	"strconv"
 	"strings"
 	"unicode"
+	"unicode/utf8"
 
 	"github.com/mattn/go-runewidth"
 	"golang.org/x/net/html"
@@ -159,8 +160,7 @@ type renderer struct {
 	// List context
 	listStack []listCtx
 
-	// Table row context (number of cells rendered in current row)
-	tableRowCells  []int
+	// Table row context
 	hnRowIndent    int
 	hnRowHasIndent bool
 
@@ -212,6 +212,38 @@ func (r *renderer) appendToLine(text string) {
 		ImageURL:   imageURL,
 	})
 	r.curCol += runewidth.StringWidth(text)
+}
+
+func (r *renderer) lastRuneOnLine() (rune, bool) {
+	for i := len(r.curSpans) - 1; i >= 0; i-- {
+		text := r.curSpans[i].Text
+		if text == "" {
+			continue
+		}
+		ru, _ := utf8.DecodeLastRuneInString(text)
+		if ru == utf8.RuneError {
+			continue
+		}
+		return ru, true
+	}
+	return 0, false
+}
+
+func (r *renderer) lineEndsWithWhitespace() bool {
+	ru, ok := r.lastRuneOnLine()
+	if !ok {
+		return false
+	}
+	return isWhitespace(ru)
+}
+
+func (r *renderer) lineHasVisibleText() bool {
+	for _, span := range r.curSpans {
+		if strings.TrimSpace(span.Text) != "" {
+			return true
+		}
+	}
+	return false
 }
 
 func (r *renderer) flushLine() {
@@ -379,7 +411,7 @@ func (r *renderer) addText(text string) {
 	words := strings.Fields(text)
 	if len(words) == 0 {
 		// All whitespace.
-		if hasLeadingSpace && r.curCol > r.indent && !r.suppressLeadingSpace {
+		if hasLeadingSpace && r.lineHasVisibleText() && !r.suppressLeadingSpace {
 			r.pendingSpace = true
 		}
 		return
@@ -389,7 +421,7 @@ func (r *renderer) addText(text string) {
 		needSpace := false
 		if i == 0 {
 			if !r.suppressLeadingSpace {
-				needSpace = (hasLeadingSpace || r.pendingSpace) && r.curCol > r.indent
+				needSpace = (hasLeadingSpace || r.pendingSpace) && r.lineHasVisibleText()
 			}
 		} else {
 			needSpace = true
@@ -662,20 +694,14 @@ func (r *renderer) handleElement(n *html.Node) {
 		r.flushLine()
 		r.hnRowIndent = 0
 		r.hnRowHasIndent = false
-		r.tableRowCells = append(r.tableRowCells, 0)
 		r.walkChildren(n)
-		r.tableRowCells = r.tableRowCells[:len(r.tableRowCells)-1]
 		r.hnRowIndent = 0
 		r.hnRowHasIndent = false
 		r.flushLine()
 
 	case atom.Td, atom.Th:
-		if len(r.tableRowCells) > 0 {
-			i := len(r.tableRowCells) - 1
-			if r.tableRowCells[i] > 0 {
-				r.appendToLine(" ")
-			}
-			r.tableRowCells[i]++
+		if r.lineHasVisibleText() && !r.lineEndsWithWhitespace() {
+			r.appendToLine(" ")
 		}
 
 		extraIndent := 0
@@ -820,9 +846,17 @@ func (r *renderer) handleLink(n *html.Node) {
 	}
 
 	// If spacing was pending before the <a>, emit it outside link styling.
-	if r.pendingSpace && r.curCol > r.indent {
+	if r.pendingSpace && r.lineHasVisibleText() {
 		r.pendingSpace = false
 		r.appendToLine(" ")
+	}
+
+	if !r.pendingSpace && r.lineHasVisibleText() && !r.lineEndsWithWhitespace() {
+		if prev, ok := r.lastRuneOnLine(); ok && isWordRune(prev) {
+			if next, ok := firstVisibleRuneInNode(n); ok && isWordRune(next) {
+				r.appendToLine(" ")
+			}
+		}
 	}
 
 	// Resolve relative URL.
@@ -877,6 +911,9 @@ func (r *renderer) handleLink(n *html.Node) {
 	r.underline = oldUnderline
 	r.curLinkIdx = oldLinkIdx
 	r.suppressLeadingSpace = oldSuppressLeadingSpace
+	if r.lineHasVisibleText() {
+		r.suppressLeadingSpace = false
+	}
 }
 
 func (r *renderer) linkHasVisibleText(linkIdx int, startLineCount, startSpanCount int) bool {
@@ -1030,7 +1067,7 @@ func (r *renderer) addControlToken(controlIdx int, text string, bold bool) {
 		return
 	}
 
-	if r.pendingSpace && r.curCol > r.indent {
+	if r.pendingSpace && r.lineHasVisibleText() {
 		r.pendingSpace = false
 		r.appendToLine(" ")
 	}
@@ -1595,6 +1632,33 @@ func selectControlValue(c Control) string {
 
 func isWhitespace(r rune) bool {
 	return unicode.IsSpace(r)
+}
+
+func isWordRune(r rune) bool {
+	return unicode.IsLetter(r) || unicode.IsDigit(r)
+}
+
+func firstVisibleRuneInNode(n *html.Node) (rune, bool) {
+	if n == nil {
+		return 0, false
+	}
+
+	if n.Type == html.TextNode {
+		for _, ru := range n.Data {
+			if !isWhitespace(ru) {
+				return ru, true
+			}
+		}
+		return 0, false
+	}
+
+	for c := n.FirstChild; c != nil; c = c.NextSibling {
+		if ru, ok := firstVisibleRuneInNode(c); ok {
+			return ru, true
+		}
+	}
+
+	return 0, false
 }
 
 func truncateToWidth(s string, maxWidth int) string {
