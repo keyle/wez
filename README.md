@@ -6,19 +6,23 @@ It aims to be fast and readable in a text UI, with practical browsing features a
 
 ## Highlights
 
-- Readable HTML rendering in TUI (based on tcell) 
+- Readable HTML rendering in TUI (based on tcell) - w3m like
 - vim-like bindings, search, link/form activation, and key remapping
-- downloads for binary responses
+- downloads for binary responses with configuable folder
 - history view
-- bookmarks with categories
-- cache, persistent cookies, visited links
-- favourites
-- recents
-- view source
-- no JavaScript runtime
+- bookmarks view and bookmarking with categories
 - form handling, basic
+- cache, persistent cookies, visited links
+- view source with syntax colouring and reformatting
 - yanking (copy), v/V visual support, mouse support
 - images preview with external tool support, e.g. `viu`
+- svg preview with external tool, e.g. `timg`
+- recents are shown on the welcome page
+- back/forward navigation keeps per-page view state (up to 25 pages)
+- anchor links and in-page jumps are supported
+- image download shortcut (`Ctrl-I`)
+- no JavaScript runtime
+- visible noscript indicates unfriendly websites
 
 ## Build
 

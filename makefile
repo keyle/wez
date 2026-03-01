@@ -16,7 +16,7 @@ clean:
 	rm -f ./wez
 	go clean
 
-install: release
+install: docs release
 	mkdir -p /usr/local/bin
 	install -m755 wez /usr/local/bin/.
 	mkdir -p /usr/local/share/man/man1
