@@ -24,7 +24,18 @@ It aims to be fast and readable in a text UI, with practical browsing features a
 - no JavaScript runtime
 - visible noscript indicates unfriendly websites
 
-## Build
+## Install (macOS)
+
+### Homebrew
+
+```bash
+    brew tap keyle/homebrew-tap
+    brew install wez
+```
+
+Otherwise fallback onto the following method. 
+
+## Build manually & install
 
 ```bash
     make all
