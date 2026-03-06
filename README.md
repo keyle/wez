@@ -29,7 +29,7 @@ It aims to be fast and readable in a text UI, with practical browsing features a
 ### Homebrew
 
 ```bash
-    brew tap keyle/homebrew-tap
+    brew tap keyle/tap
     brew install wez
 ```
 
