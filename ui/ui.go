@@ -478,9 +478,14 @@ func (u *UI) Draw() {
 
 	// Center: title + URL.
 	if u.Doc != nil {
-		maxCenter := w - leftLen - rightLen - 4
+		leftGap := 0
+		if leftLen > 0 {
+			leftGap = 2
+		}
+		rightGap := 2
+		maxCenter := w - leftLen - rightLen - leftGap - rightGap
 		if maxCenter > 10 {
-			centerX := leftLen + 2
+			centerX := leftLen + leftGap
 			drawStringTruncated(u.Screen, centerX, h-1, u.docStatusText, maxCenter, statusStyle)
 		}
 	}
