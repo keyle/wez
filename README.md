@@ -50,6 +50,10 @@ Otherwise fallback onto the following method.
     wez --dump https://example.com
 ```
 
+## Screenshot
+
+![screenshot](https://raw.githubusercontent.com/keyle/wez/refs/heads/master/assets/screenshot.png)
+
 ## Config
 
 these files are auto created on first start.
